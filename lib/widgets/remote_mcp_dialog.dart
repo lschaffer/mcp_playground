@@ -275,6 +275,7 @@ class _RemoteMcpDialogState extends State<RemoteMcpDialog> {
         url,
         mcpEndpoint: endpoint,
         bearerToken: apiKey,
+        apiPassword: apiPassword,
       );
 
       // Connect and query tools

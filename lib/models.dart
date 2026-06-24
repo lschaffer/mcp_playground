@@ -75,6 +75,8 @@ class LlmConfig {
   final int? topK;
   final double? repeatPenalty;
   final int? seed;
+  final int maxToolOutputSize;
+  final int tokenWarningThreshold;
 
   // Flags
   final bool isSlm;
@@ -94,6 +96,8 @@ class LlmConfig {
     this.topK,
     this.repeatPenalty,
     this.seed,
+    this.maxToolOutputSize = 2560000,
+    this.tokenWarningThreshold = 1500000,
     this.isSlm = false,
     this.isMultiModal = true,
     this.thinking = false,
@@ -109,6 +113,46 @@ class LlmConfig {
     return apiKey.trim().isNotEmpty;
   }
 
+  LlmConfig copyWith({
+    LlmProvider? provider,
+    String? model,
+    String? apiKey,
+    String? baseUrl,
+    double? temperature,
+    int? maxTokens,
+    double? topP,
+    int? topK,
+    double? repeatPenalty,
+    int? seed,
+    int? maxToolOutputSize,
+    int? tokenWarningThreshold,
+    bool? isSlm,
+    bool? isMultiModal,
+    bool? thinking,
+    bool? useNativeToolCall,
+    bool? useSafeToolCall,
+  }) {
+    return LlmConfig(
+      provider: provider ?? this.provider,
+      model: model ?? this.model,
+      apiKey: apiKey ?? this.apiKey,
+      baseUrl: baseUrl ?? this.baseUrl,
+      temperature: temperature ?? this.temperature,
+      maxTokens: maxTokens ?? this.maxTokens,
+      topP: topP ?? this.topP,
+      topK: topK ?? this.topK,
+      repeatPenalty: repeatPenalty ?? this.repeatPenalty,
+      seed: seed ?? this.seed,
+      maxToolOutputSize: maxToolOutputSize ?? this.maxToolOutputSize,
+      tokenWarningThreshold: tokenWarningThreshold ?? this.tokenWarningThreshold,
+      isSlm: isSlm ?? this.isSlm,
+      isMultiModal: isMultiModal ?? this.isMultiModal,
+      thinking: thinking ?? this.thinking,
+      useNativeToolCall: useNativeToolCall ?? this.useNativeToolCall,
+      useSafeToolCall: useSafeToolCall ?? this.useSafeToolCall,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'provider': provider.configKey,
         'model': model,
@@ -120,6 +164,8 @@ class LlmConfig {
         if (topK != null) 'topK': topK,
         if (repeatPenalty != null) 'repeatPenalty': repeatPenalty,
         if (seed != null) 'seed': seed,
+        'maxToolOutputSize': maxToolOutputSize,
+        'tokenWarningThreshold': tokenWarningThreshold,
         'isSlm': isSlm,
         'isMultiModal': isMultiModal,
         'thinking': thinking,
@@ -139,6 +185,8 @@ class LlmConfig {
       topK: json['topK'] as int?,
       repeatPenalty: (json['repeatPenalty'] as num?)?.toDouble(),
       seed: json['seed'] as int?,
+      maxToolOutputSize: json['maxToolOutputSize'] as int? ?? 2560000,
+      tokenWarningThreshold: json['tokenWarningThreshold'] as int? ?? 1500000,
       isSlm: json['isSlm'] as bool? ?? false,
       isMultiModal: json['isMultiModal'] as bool? ?? true,
       thinking: json['thinking'] as bool? ?? false,

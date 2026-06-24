@@ -264,15 +264,17 @@ class PlaygroundController extends ChangeNotifier {
   Future<void> toggleServer(String id, bool enabled) async {
     final idx = _servers.indexWhere((s) => s.id == id);
     if (idx != -1) {
-      final old = _servers[idx];
-      _servers[idx] = McpServerConfig(
-        id: old.id,
-        name: old.name,
-        url: old.url,
-        apiKey: old.apiKey,
-        apiPassword: old.apiPassword,
-        enabled: enabled,
-      );
+      _servers[idx] = _servers[idx].copyWith(enabled: enabled);
+      await _storage.saveServers(_servers);
+      await _syncMcpServers();
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateServer(McpServerConfig server) async {
+    final idx = _servers.indexWhere((s) => s.id == server.id);
+    if (idx != -1) {
+      _servers[idx] = server;
       await _storage.saveServers(_servers);
       await _syncMcpServers();
       notifyListeners();
@@ -289,6 +291,7 @@ class PlaygroundController extends ChangeNotifier {
         s.url,
         mcpEndpoint: s.mcpEndpoint,
         bearerToken: s.apiKey,
+        apiPassword: s.apiPassword,
         logCallback: (msg, {bool isError = false}) => debugPrint('[Playground MCP Log: ${s.name}] $msg'),
       );
       _mcpManager.registerClient(

@@ -13,6 +13,7 @@ class MCPClient extends ChangeNotifier {
   final String serverUrl;
   final String mcpEndpoint;
   final String? bearerToken;
+  final String? apiPassword;
   final McpLogCallback? logCallback;
 
   String? _effectiveBearerToken;
@@ -35,8 +36,13 @@ class MCPClient extends ChangeNotifier {
   /// Session ID for stateful Streamable HTTP transport (MCP 2025).
   String? _sessionId;
 
-  MCPClient(this.serverUrl, {this.mcpEndpoint = '/mcp', this.bearerToken, this.logCallback})
-      : _effectiveBearerToken = bearerToken;
+  MCPClient(
+    this.serverUrl, {
+    this.mcpEndpoint = '/mcp',
+    this.bearerToken,
+    this.apiPassword,
+    this.logCallback,
+  }) : _effectiveBearerToken = bearerToken;
 
   void _log(String message, {bool isError = false}) {
     if (logCallback != null) {
@@ -77,7 +83,12 @@ class MCPClient extends ChangeNotifier {
       'Accept': 'application/json, text/event-stream',
     };
 
-    if (_effectiveBearerToken != null) {
+    if (apiPassword != null && apiPassword!.isNotEmpty) {
+      final username = _effectiveBearerToken ?? '';
+      final bytes = utf8.encode('$username:$apiPassword');
+      final base64Str = base64.encode(bytes);
+      headers['Authorization'] = 'Basic $base64Str';
+    } else if (_effectiveBearerToken != null && _effectiveBearerToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_effectiveBearerToken';
     }
 

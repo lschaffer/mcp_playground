@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
+import 'package:googleai_dart/googleai_dart.dart' as gemini;
 import 'package:openai_dart/openai_dart.dart' as openai;
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:ollama_dart/ollama_dart.dart' as ollama;
@@ -337,97 +337,120 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final List<gemini.Tool> geminiTools = [];
-    if (tools.isNotEmpty && config.useNativeToolCall) {
-      final declarations = <gemini.FunctionDeclaration>[];
-      for (final t in tools) {
-        declarations.add(
-          gemini.FunctionDeclaration(
-            t.name,
-            t.description ?? '',
-            _sanitizeGeminiSchema(t.inputSchema),
-          ),
-        );
-      }
-      geminiTools.add(gemini.Tool(functionDeclarations: declarations));
-    }
-
-    final model = gemini.GenerativeModel(
-      model: config.model.trim().isNotEmpty ? config.model : 'gemini-2.5-flash',
-      apiKey: config.apiKey,
-      systemInstruction: systemPrompt != null && systemPrompt.trim().isNotEmpty
-          ? gemini.Content.system(systemPrompt)
-          : null,
-      generationConfig: gemini.GenerationConfig(
-        temperature: config.temperature,
-        maxOutputTokens: config.maxTokens > 0 ? config.maxTokens : null,
-        topP: config.topP,
-        topK: config.topK,
-        candidateCount: 1,
+    final client = gemini.GoogleAIClient(
+      config: gemini.GoogleAIConfig.googleAI(
+        authProvider: gemini.ApiKeyProvider(config.apiKey),
       ),
-      tools: geminiTools.isNotEmpty ? geminiTools : null,
     );
 
-    final List<gemini.Content> contentList = [];
-    for (final msg in messages) {
-      if (msg.role == ChatRole.system) continue;
-
-      switch (msg.role) {
-        case ChatRole.user:
-          contentList.add(
-            gemini.Content.text(msg.content),
+    try {
+      final List<gemini.Tool> geminiTools = [];
+      if (tools.isNotEmpty && config.useNativeToolCall) {
+        final declarations = <gemini.FunctionDeclaration>[];
+        for (final t in tools) {
+          declarations.add(
+            gemini.FunctionDeclaration(
+              name: t.name,
+              description: t.description ?? '',
+              parameters: _sanitizeGeminiSchema(t.inputSchema),
+            ),
           );
-        case ChatRole.assistant:
-          if (msg.type == MessageType.toolCall) {
-            contentList.add(
-              gemini.Content('model', [
-                gemini.FunctionCall(
-                  msg.toolName ?? '',
-                  msg.toolArguments ?? {},
-                )
-              ]),
-            );
-          } else {
-            contentList.add(
-              gemini.Content.model([gemini.TextPart(msg.content)]),
-            );
-          }
-        case ChatRole.tool:
-          contentList.add(
-            gemini.Content('function', [
-              gemini.FunctionResponse(
-                msg.toolName ?? '',
-                {'content': msg.content},
-              )
-            ]),
-          );
-        default:
-          break;
+        }
+        geminiTools.add(gemini.Tool(functionDeclarations: declarations));
       }
-    }
 
-    final response = await model.generateContent(contentList);
-    final text = response.text ?? '';
-    final toolCalls = <LLMToolCall>[];
+      final List<gemini.Content> contentList = [];
+      for (final msg in messages) {
+        if (msg.role == ChatRole.system) continue;
 
-    final functionCalls = response.functionCalls;
-    if (functionCalls.isNotEmpty) {
-      for (final fc in functionCalls) {
-        toolCalls.add(
-          LLMToolCall(
-            id: const Uuid().v4(),
-            name: fc.name,
-            arguments: Map<String, dynamic>.from(fc.args),
+        switch (msg.role) {
+          case ChatRole.user:
+            contentList.add(
+              gemini.Content(
+                role: 'user',
+                parts: [gemini.Part.text(msg.content)],
+              ),
+            );
+          case ChatRole.assistant:
+            if (msg.type == MessageType.toolCall) {
+              contentList.add(
+                gemini.Content(
+                  role: 'model',
+                  parts: [
+                    gemini.Part.functionCall(
+                      msg.toolName ?? '',
+                      args: msg.toolArguments,
+                    )
+                  ],
+                ),
+              );
+            } else {
+              contentList.add(
+                gemini.Content(
+                  role: 'model',
+                  parts: [gemini.Part.text(msg.content)],
+                ),
+              );
+            }
+          case ChatRole.tool:
+            contentList.add(
+              gemini.Content(
+                role: 'function',
+                parts: [
+                  gemini.Part.functionResponse(
+                    msg.toolName ?? '',
+                    {'content': msg.content},
+                  )
+                ],
+              ),
+            );
+          default:
+            break;
+        }
+      }
+
+      final response = await client.models.generateContent(
+        model: config.model.trim().isNotEmpty ? config.model : 'gemini-2.5-flash',
+        request: gemini.GenerateContentRequest(
+          contents: contentList,
+          tools: geminiTools.isNotEmpty ? geminiTools : null,
+          systemInstruction: systemPrompt != null && systemPrompt.trim().isNotEmpty
+              ? gemini.Content(parts: [gemini.Part.text(systemPrompt)])
+              : null,
+          generationConfig: gemini.GenerationConfig(
+            temperature: config.temperature,
+            maxOutputTokens: config.maxTokens > 0 ? config.maxTokens : null,
+            topP: config.topP,
+            topK: config.topK,
+            candidateCount: 1,
           ),
-        );
-      }
-    }
+        ),
+      );
 
-    return LLMResponse(text: text, toolCalls: toolCalls);
+      final text = response.text ?? '';
+      final toolCalls = <LLMToolCall>[];
+
+      final functionCalls = response.functionCalls;
+      if (functionCalls.isNotEmpty) {
+        for (final fc in functionCalls) {
+          toolCalls.add(
+            LLMToolCall(
+              id: const Uuid().v4(),
+              name: fc.name,
+              arguments: Map<String, dynamic>.from(fc.args ?? {}),
+            ),
+          );
+        }
+      }
+
+      return LLMResponse(text: text, toolCalls: toolCalls);
+    } finally {
+      client.close();
+    }
   }
 
   static gemini.Schema _sanitizeGeminiSchema(Map<String, dynamic>? schema) {
-    if (schema == null) return gemini.Schema.string();
+    if (schema == null) return const gemini.Schema(type: gemini.SchemaType.string);
     final typeStr = (schema['type'] ?? 'string').toString().toLowerCase();
 
     final desc = schema['description'] as String?;
@@ -446,25 +469,30 @@ class LLMService {
             }
           }
         }
-        return gemini.Schema.object(
+        return gemini.Schema(
+          type: gemini.SchemaType.object,
           description: desc,
           properties: propsMap,
-          requiredProperties: requiredProps,
+          required: requiredProps,
         );
       case 'array':
         final items = schema['items'];
         final itemsSchema = items is Map
             ? _sanitizeGeminiSchema(Map<String, dynamic>.from(items))
-            : gemini.Schema.string();
-        return gemini.Schema.array(description: desc, items: itemsSchema);
+            : const gemini.Schema(type: gemini.SchemaType.string);
+        return gemini.Schema(
+          type: gemini.SchemaType.array,
+          description: desc,
+          items: itemsSchema,
+        );
       case 'integer':
-        return gemini.Schema.integer(description: desc);
+        return gemini.Schema(type: gemini.SchemaType.integer, description: desc);
       case 'number':
-        return gemini.Schema.number(description: desc);
+        return gemini.Schema(type: gemini.SchemaType.number, description: desc);
       case 'boolean':
-        return gemini.Schema.boolean(description: desc);
+        return gemini.Schema(type: gemini.SchemaType.boolean, description: desc);
       default:
-        return gemini.Schema.string(description: desc);
+        return gemini.Schema(type: gemini.SchemaType.string, description: desc);
     }
   }
 

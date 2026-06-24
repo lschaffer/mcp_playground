@@ -10,6 +10,8 @@ import 'playground_controller.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/settings_drawer.dart';
 import 'widgets/registered_tools_dialog.dart';
+import 'widgets/agent_inspector.dart';
+import 'widgets/llm_config_form.dart';
 
 class McpPlayground extends StatefulWidget {
   /// Default LLM setup parameters.
@@ -47,6 +49,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
   // Two-Site Layout State
   bool _playgroundStarted = false;
   String? _loadedSetupId;
+  double _chatFraction = 0.7;
 
   // Setup form states
   final _systemPromptCtrl = TextEditingController();
@@ -61,6 +64,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
   final _customApiKeyCtrl = TextEditingController();
   final _customBaseUrlCtrl = TextEditingController();
   final _customTempCtrl = TextEditingController(text: '0.2');
+  final _customMaxTokensCtrl = TextEditingController(text: '0');
+  final _customMaxToolOutputSizeCtrl = TextEditingController(text: '2560000');
+  final _customTokenWarningThresholdCtrl = TextEditingController(text: '1500000');
+  final _customTopKCtrl = TextEditingController();
+  final _customTopPCtrl = TextEditingController();
+  final _customRepeatPenaltyCtrl = TextEditingController();
+  final _customSeedCtrl = TextEditingController();
   bool _customThinking = false;
   bool _customIsSlm = false;
   bool _customIsMultiModal = true;
@@ -193,6 +203,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
     _customApiKeyCtrl.dispose();
     _customBaseUrlCtrl.dispose();
     _customTempCtrl.dispose();
+    _customMaxTokensCtrl.dispose();
+    _customMaxToolOutputSizeCtrl.dispose();
+    _customTokenWarningThresholdCtrl.dispose();
+    _customTopKCtrl.dispose();
+    _customTopPCtrl.dispose();
+    _customRepeatPenaltyCtrl.dispose();
+    _customSeedCtrl.dispose();
     _sshHostCtrl.dispose();
     _sshPortCtrl.dispose();
     _sshUsernameCtrl.dispose();
@@ -408,6 +425,129 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
+  void _showChatToolsChecklistDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final theme = Theme.of(context);
+            final groups = _getToolsetGroups().where((g) => _isToolsetEnabled(g)).toList();
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              title: const Text(
+                'Select Active Tools',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              content: SizedBox(
+                width: 480,
+                child: groups.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Text(
+                          'No toolsets selected or active. Change toolsets on the setup screen.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: groups.length,
+                        itemBuilder: (context, gIdx) {
+                          final group = groups[gIdx];
+                          final disabled = _controller.disabledToolNames;
+                          final groupTools = group.tools;
+                          
+                          // Check if all tools in group are enabled
+                          final allEnabled = groupTools.every((t) => !disabled.contains(t.name));
+                          final noneEnabled = groupTools.every((t) => disabled.contains(t.name));
+                          
+                          bool? triStateVal;
+                          if (allEnabled) {
+                            triStateVal = true;
+                          } else if (noneEnabled) {
+                            triStateVal = false;
+                          } else {
+                            triStateVal = null; // Indeterminate
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Group header with select all/none checkbox
+                              Container(
+                                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: triStateVal,
+                                      tristate: true,
+                                      activeColor: const Color(0xFF00ACC1),
+                                      onChanged: (val) {
+                                        final targetVal = val ?? false;
+                                        setDialogState(() {
+                                          for (final t in groupTools) {
+                                            _controller.toggleToolEnabled(t.name, targetVal);
+                                          }
+                                        });
+                                        setState(() {});
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      group.name,
+                                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Tools in this group
+                              ...groupTools.map((t) {
+                                final isEnabled = !disabled.contains(t.name);
+                                return CheckboxListTile(
+                                  value: isEnabled,
+                                  activeColor: const Color(0xFF00ACC1),
+                                  title: Text(
+                                    t.name,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    t.description ?? 'No description.',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  onChanged: (val) {
+                                    setDialogState(() {
+                                      _controller.toggleToolEnabled(t.name, val == true);
+                                    });
+                                    setState(() {});
+                                  },
+                                );
+                              }),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showIndividualToolsDialog(_ToolsetGroup group) {
     showDialog(
       context: context,
@@ -450,36 +590,59 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
-  void _handlePlusAction(String action) {
-    String textToInsert = '';
-    if (action == 'separator') {
-      textToInsert = ' ++#++ ';
-    } else if (action == 'weather') {
-      textToInsert = 'Check the weather in Paris, London, and Tokyo, and compile a report.';
-    } else if (action == 'ssh') {
-      textToInsert = 'Connect to localhost SSH port 22 with user and list files in current directory.';
-    } else if (action == 'chart') {
-      textToInsert = 'Generate a bar chart with the following data: Python: 45, JavaScript: 35, Dart: 25, Go: 15.';
+  void _handleExampleAction(String action) {
+    // Reset/clear current conversation and switch view back to the initial setup screen
+    _resetPlayground();
+
+    // Clear all other text inputs
+    _inputCtrl.clear();
+    _systemPromptCtrl.clear();
+    _sshHostCtrl.clear();
+    _sshUsernameCtrl.clear();
+    _sshPasswordCtrl.clear();
+    _sshPrivateKeyPem = '';
+    _sshPrivateKeyFileName = '';
+
+    // Disable all tools first
+    final allTools = _getToolsetGroups().expand((g) => g.tools).map((t) => t.name).toList();
+    for (final tool in allTools) {
+      _controller.toggleToolEnabled(tool, false);
     }
 
-    final text = _inputCtrl.text;
-    final selection = _inputCtrl.selection;
-    if (selection.isValid) {
-      final newText = text.replaceRange(selection.start, selection.end, textToInsert);
-      _inputCtrl.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: selection.start + textToInsert.length),
-      );
-    } else {
-      _inputCtrl.text = text + textToInsert;
+    String textToInsert = '';
+    List<String> toolsToEnable = [];
+
+    if (action == 'weather') {
+      textToInsert = 'Check the weather in Paris, London, and Tokyo, and compile a report.';
+      toolsToEnable = ['get_current_weather', 'get_hourly_forecast', 'get_daily_forecast', 'geocode_weather_city'];
+    } else if (action == 'ssh') {
+      textToInsert = 'list top 20 biggest files in /var/lib';
+      toolsToEnable = ['list_directory', 'read_file', 'download_file', 'upload_file', 'execute_command', 'make_directory', 'remove_directory'];
+    } else if (action == 'chart') {
+      textToInsert = 'Generate a bar chart with the following data: Python: 45, JavaScript: 35, Dart: 25, Go: 15.';
+      toolsToEnable = ['create_chart_png'];
     }
+
+    // Enable target tools
+    for (final tool in toolsToEnable) {
+      _controller.toggleToolEnabled(tool, true);
+    }
+
+    // Populate initial prompt
+    _initialPromptCtrl.text = textToInsert;
+
     setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Loaded "$action" template. Tools selected & setup cleared.')),
+    );
   }
 
   // Reset function
   void _resetPlayground() {
     setState(() {
       _playgroundStarted = false;
+      _loadedSetupId = null;
       _controller.clearChat();
       _attachments.clear();
     });
@@ -487,77 +650,118 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
   // Save current setup dialog
   void _showSaveSetupDialog() {
-    final nameCtrl = TextEditingController(text: 'My Playground Setup');
+    SavedPlaygroundSetup? loadedSetup;
+    if (_loadedSetupId != null) {
+      for (final s in _controller.savedSetups) {
+        if (s.id == _loadedSetupId) {
+          loadedSetup = s;
+          break;
+        }
+      }
+    }
+    final nameCtrl = TextEditingController(text: loadedSetup?.name ?? 'My Playground Setup');
+    bool saveAsNew = _loadedSetupId == null;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Save Setup Configuration'),
-        content: TextFormField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Configuration Name',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final name = nameCtrl.text.trim();
-              if (name.isEmpty) return;
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setDialogState) {
+          return AlertDialog(
+            title: const Text('Save Setup Configuration'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Configuration Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (_loadedSetupId != null) ...[
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text('Save as a new configuration'),
+                    value: saveAsNew,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        saveAsNew = val ?? false;
+                      });
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  final name = nameCtrl.text.trim();
+                  if (name.isEmpty) return;
 
-              final id = _loadedSetupId ?? const Uuid().v4();
-              final disabled = _controller.disabledToolNames;
-              final allTools = _getToolsetGroups().expand((g) => g.tools).map((t) => t.name).toList();
-              final enabledTools = allTools.where((t) => !disabled.contains(t)).toList();
+                  final id = saveAsNew ? const Uuid().v4() : _loadedSetupId!;
+                  final disabled = _controller.disabledToolNames;
+                  final allTools = _getToolsetGroups().expand((g) => g.tools).map((t) => t.name).toList();
+                  final enabledTools = allTools.where((t) => !disabled.contains(t)).toList();
 
-              final setup = SavedPlaygroundSetup(
-                id: id,
-                name: name,
-                createdAt: DateTime.now(),
-                systemPrompt: _systemPromptCtrl.text,
-                initialPrompt: _initialPromptCtrl.text,
-                enabledToolNames: enabledTools,
-                chatMode: _chatMode,
-                stopAfterToolCall: _stopAfterToolCall,
-                useCustomLlm: _useCustomLlm,
-                customLlmConfig: _useCustomLlm
-                    ? LlmConfig(
-                        provider: _customProvider,
-                        model: _customModelCtrl.text,
-                        apiKey: _customApiKeyCtrl.text,
-                        baseUrl: _customBaseUrlCtrl.text,
-                        temperature: double.tryParse(_customTempCtrl.text) ?? 0.2,
-                        thinking: _customThinking,
-                        isSlm: _customIsSlm,
-                        isMultiModal: _customIsMultiModal,
-                        useNativeToolCall: _customUseNativeTool,
-                      )
-                    : null,
-                mcpInitParams: {
-                  'ssh': {
-                    'host': _sshHostCtrl.text,
-                    'port': int.tryParse(_sshPortCtrl.text) ?? 22,
-                    'username': _sshUsernameCtrl.text,
-                    'password': _sshPasswordCtrl.text,
-                    'privateKey': _sshPrivateKeyPem,
-                    '_privateKeyFileName': _sshPrivateKeyFileName,
-                  }
+                  final setup = SavedPlaygroundSetup(
+                    id: id,
+                    name: name,
+                    createdAt: DateTime.now(),
+                    systemPrompt: _systemPromptCtrl.text,
+                    initialPrompt: _initialPromptCtrl.text,
+                    enabledToolNames: enabledTools,
+                    chatMode: _chatMode,
+                    stopAfterToolCall: _stopAfterToolCall,
+                    useCustomLlm: _useCustomLlm,
+                    customLlmConfig: _useCustomLlm
+                        ? LlmConfig(
+                            provider: _customProvider,
+                            model: _customModelCtrl.text,
+                            apiKey: _customApiKeyCtrl.text,
+                            baseUrl: _customBaseUrlCtrl.text,
+                            temperature: double.tryParse(_customTempCtrl.text) ?? 0.2,
+                            maxTokens: int.tryParse(_customMaxTokensCtrl.text) ?? 0,
+                            maxToolOutputSize: int.tryParse(_customMaxToolOutputSizeCtrl.text) ?? 2560000,
+                            tokenWarningThreshold: int.tryParse(_customTokenWarningThresholdCtrl.text) ?? 1500000,
+                            topP: double.tryParse(_customTopPCtrl.text),
+                            topK: int.tryParse(_customTopKCtrl.text),
+                            repeatPenalty: double.tryParse(_customRepeatPenaltyCtrl.text),
+                            seed: int.tryParse(_customSeedCtrl.text),
+                            thinking: _customThinking,
+                            isSlm: _customIsSlm,
+                            isMultiModal: _customIsMultiModal,
+                            useNativeToolCall: _customUseNativeTool,
+                          )
+                        : null,
+                    mcpInitParams: {
+                      'ssh': {
+                        'host': _sshHostCtrl.text,
+                        'port': int.tryParse(_sshPortCtrl.text) ?? 22,
+                        'username': _sshUsernameCtrl.text,
+                        'password': _sshPasswordCtrl.text,
+                        'privateKey': _sshPrivateKeyPem,
+                        '_privateKeyFileName': _sshPrivateKeyFileName,
+                      }
+                    },
+                  );
+
+                  _controller.saveSetup(setup);
+                  setState(() {
+                    _loadedSetupId = id;
+                  });
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Setup "$name" saved successfully.')),
+                  );
                 },
-              );
-
-              _controller.saveSetup(setup);
-              setState(() {
-                _loadedSetupId = id;
-              });
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Setup "$name" saved successfully.')),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -605,6 +809,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             _customApiKeyCtrl.text = custom.apiKey;
                             _customBaseUrlCtrl.text = custom.baseUrl;
                             _customTempCtrl.text = custom.temperature.toString();
+                            _customMaxTokensCtrl.text = custom.maxTokens.toString();
+                            _customMaxToolOutputSizeCtrl.text = custom.maxToolOutputSize.toString();
+                            _customTokenWarningThresholdCtrl.text = custom.tokenWarningThreshold.toString();
+                            _customTopKCtrl.text = custom.topK?.toString() ?? '';
+                            _customTopPCtrl.text = custom.topP?.toString() ?? '';
+                            _customRepeatPenaltyCtrl.text = custom.repeatPenalty?.toString() ?? '';
+                            _customSeedCtrl.text = custom.seed?.toString() ?? '';
                             _customThinking = custom.thinking;
                             _customIsSlm = custom.isSlm;
                             _customIsMultiModal = custom.isMultiModal;
@@ -661,6 +872,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
       _customApiKeyCtrl.text = defaults.apiKey;
       _customBaseUrlCtrl.text = defaults.baseUrl;
       _customTempCtrl.text = defaults.temperature.toString();
+      _customMaxTokensCtrl.text = defaults.maxTokens.toString();
+      _customMaxToolOutputSizeCtrl.text = defaults.maxToolOutputSize.toString();
+      _customTokenWarningThresholdCtrl.text = defaults.tokenWarningThreshold.toString();
+      _customTopKCtrl.text = defaults.topK?.toString() ?? '';
+      _customTopPCtrl.text = defaults.topP?.toString() ?? '';
+      _customRepeatPenaltyCtrl.text = defaults.repeatPenalty?.toString() ?? '';
+      _customSeedCtrl.text = defaults.seed?.toString() ?? '';
       _customThinking = defaults.thinking;
       _customIsSlm = defaults.isSlm;
       _customIsMultiModal = defaults.isMultiModal;
@@ -681,6 +899,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
         apiKey: _customApiKeyCtrl.text.trim(),
         baseUrl: _customBaseUrlCtrl.text.trim(),
         temperature: double.tryParse(_customTempCtrl.text.trim()) ?? 0.2,
+        maxTokens: int.tryParse(_customMaxTokensCtrl.text.trim()) ?? 0,
+        maxToolOutputSize: int.tryParse(_customMaxToolOutputSizeCtrl.text.trim()) ?? 2560000,
+        tokenWarningThreshold: int.tryParse(_customTokenWarningThresholdCtrl.text.trim()) ?? 1500000,
+        topK: int.tryParse(_customTopKCtrl.text.trim()),
+        topP: double.tryParse(_customTopPCtrl.text.trim()),
+        repeatPenalty: double.tryParse(_customRepeatPenaltyCtrl.text.trim()),
+        seed: int.tryParse(_customSeedCtrl.text.trim()),
         thinking: _customThinking,
         isSlm: _customIsSlm,
         isMultiModal: _customIsMultiModal,
@@ -694,10 +919,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
       _playgroundStarted = true;
     });
 
-    // 2. Trigger initial prompt if provided
+    // 2. Populate initial prompt in text input if provided
     final initPrompt = _initialPromptCtrl.text.trim();
     if (initPrompt.isNotEmpty) {
-      _controller.sendMessage(initPrompt);
+      _inputCtrl.text = initPrompt;
     }
   }
 
@@ -709,13 +934,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: Column(
-            spacing: 16,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+      child: Column(
+        spacing: 16,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
               // Welcome / Try info banner
               Container(
                 padding: const EdgeInsets.all(16),
@@ -1032,96 +1254,50 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             ),
                           ],
                         ),
-                        DropdownButtonFormField<LlmProvider>(
-                          initialValue: _customProvider,
-                          decoration: const InputDecoration(labelText: 'Provider', border: OutlineInputBorder(), isDense: true),
-                          items: LlmProvider.values.map((provider) {
-                            return DropdownMenuItem(
-                              value: provider,
-                              child: Text(provider.displayName),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() {
-                                _customProvider = val;
-                              });
-                            }
+                        LlmConfigForm(
+                          provider: _customProvider,
+                          onProviderChanged: (val) {
+                            setState(() {
+                              _customProvider = val;
+                            });
                           },
+                          modelCtrl: _customModelCtrl,
+                          apiKeyCtrl: _customApiKeyCtrl,
+                          baseUrlCtrl: _customBaseUrlCtrl,
                         ),
-                        TextFormField(
-                          controller: _customModelCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Model Name',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                        TextFormField(
-                          controller: _customApiKeyCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'API Key',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                        TextFormField(
-                          controller: _customBaseUrlCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Base Endpoint URL (optional)',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                        ExpansionTile(
-                          title: const Text('Advanced Custom Settings', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          tilePadding: EdgeInsets.zero,
-                          children: [
-                            Column(
-                              spacing: 8,
-                              children: [
-                                TextFormField(
-                                  controller: _customTempCtrl,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Temperature',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                ),
-                                SwitchListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Thinking / Reasoning capabilities'),
-                                  value: _customThinking,
-                                  onChanged: (v) => setState(() => _customThinking = v),
-                                ),
-                                SwitchListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Small Language Model (SLM)'),
-                                  value: _customIsSlm,
-                                  onChanged: (v) => setState(() => _customIsSlm = v),
-                                ),
-                                SwitchListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Multi-modal features enabled'),
-                                  value: _customIsMultiModal,
-                                  onChanged: (v) => setState(() => _customIsMultiModal = v),
-                                ),
-                                SwitchListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Native tool calls supported'),
-                                  value: _customUseNativeTool,
-                                  onChanged: (v) => setState(() => _customUseNativeTool = v),
-                                ),
-                              ],
+                        if (_customProvider != LlmProvider.none) ...[
+                          const SizedBox(height: 12),
+                          ExpansionTile(
+                            title: const Text(
+                              'Advanced Custom Settings',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ],
-                        ),
+                            tilePadding: EdgeInsets.zero,
+                            children: [
+                              LlmAdvancedSettingsForm(
+                                tempCtrl: _customTempCtrl,
+                                maxTokensCtrl: _customMaxTokensCtrl,
+                                maxToolOutputSizeCtrl: _customMaxToolOutputSizeCtrl,
+                                tokenWarningThresholdCtrl: _customTokenWarningThresholdCtrl,
+                                topKCtrl: _customTopKCtrl,
+                                topPCtrl: _customTopPCtrl,
+                                repeatPenaltyCtrl: _customRepeatPenaltyCtrl,
+                                seedCtrl: _customSeedCtrl,
+                                thinking: _customThinking,
+                                onThinkingChanged: (val) => setState(() => _customThinking = val),
+                                isSlm: _customIsSlm,
+                                onIsSlmChanged: (val) => setState(() => _customIsSlm = val),
+                                isMultiModal: _customIsMultiModal,
+                                onIsMultiModalChanged: (val) => setState(() => _customIsMultiModal = val),
+                                useNativeToolCall: _customUseNativeTool,
+                                onUseNativeToolCallChanged: (val) => setState(() => _customUseNativeTool = val),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1149,15 +1325,68 @@ class _McpPlaygroundState extends State<McpPlayground> {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
   // Conversation/Chat Area build
   Widget _buildConversationView(ThemeData theme) {
+    final groups = _getToolsetGroups();
+    final enabledToolsCount = groups.expand((g) => g.tools).where((t) => !_controller.disabledToolNames.contains(t.name)).length;
+
     return Column(
       children: [
+        // Top Bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.edit_note, size: 16),
+                label: const Text('System Prompt (tap to edit)'),
+                onPressed: () {
+                  final promptCtrl = TextEditingController(text: _controller.systemPrompt);
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Edit System Prompt'),
+                      content: TextFormField(
+                        controller: promptCtrl,
+                        maxLines: 6,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () {
+                            setState(() {
+                              _controller.systemPrompt = promptCtrl.text;
+                              _systemPromptCtrl.text = promptCtrl.text;
+                            });
+                            Navigator.pop(ctx);
+                          },
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.build_circle_outlined, size: 16),
+                label: Text('$enabledToolsCount tools selected'),
+                onPressed: _showSelectedToolsDialog,
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
         // --- Main Conversation Area ---
         Expanded(
           child: _controller.isLoading
@@ -1258,71 +1487,41 @@ class _McpPlaygroundState extends State<McpPlayground> {
       ),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildAttachmentPreviews(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: Row(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAttachmentPreviews(),
+              TextField(
+                controller: _inputCtrl,
+                maxLines: 4,
+                minLines: 1,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _handleSend(),
+                decoration: const InputDecoration(
+                  hintText: 'Type a message or ask a tool to run...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                onChanged: (text) {
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 8),
+              Row(
                 children: [
                   IconButton(
                     icon: const Icon(Icons.attach_file_outlined),
                     tooltip: 'Attach Files / Images',
                     onPressed: _pickAttachments,
                   ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.add_circle_outline),
-                    tooltip: 'Insert Template / Step Separator',
-                    onSelected: _handlePlusAction,
-                    itemBuilder: (ctx) => const [
-                      PopupMenuItem(
-                        value: 'separator',
-                        child: Row(
-                          children: [
-                            Icon(Icons.splitscreen_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Insert Step Separator (++#++)'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: 'weather',
-                        child: Row(
-                          children: [
-                            Icon(Icons.cloud_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Template: Weather Report'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'ssh',
-                        child: Row(
-                          children: [
-                            Icon(Icons.terminal_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Template: SSH Command'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'chart',
-                        child: Row(
-                          children: [
-                            Icon(Icons.bar_chart_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Template: Generate Chart'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                   IconButton(
                     icon: const Icon(Icons.build_outlined),
                     tooltip: 'Active Tools Checklist',
-                    onPressed: _showToolChecklistDialog,
+                    onPressed: _showChatToolsChecklistDialog,
                   ),
                   IconButton(
                     icon: Icon(
@@ -1338,23 +1537,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                       });
                     },
                   ),
-                  Expanded(
-                    child: TextField(
-                      controller: _inputCtrl,
-                      maxLines: 4,
-                      minLines: 1,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _handleSend(),
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message or ask a tool to run...',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onChanged: (text) {
-                        setState(() {});
-                      },
-                    ),
-                  ),
+                  const Spacer(),
                   IconButton(
                     icon: Icon(
                       Icons.send_rounded,
@@ -1368,8 +1551,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1402,6 +1585,263 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
+  void _clearSetupInputs() {
+    setState(() {
+      _systemPromptCtrl.clear();
+      _initialPromptCtrl.clear();
+      _sshHostCtrl.clear();
+      _sshPortCtrl.text = '22';
+      _sshUsernameCtrl.clear();
+      _sshPasswordCtrl.clear();
+      _sshPrivateKeyPem = '';
+      _sshPrivateKeyFileName = '';
+      
+      final allTools = _getToolsetGroups().expand((g) => g.tools).map((t) => t.name).toList();
+      for (final tool in allTools) {
+        _controller.toggleToolEnabled(tool, false);
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cleared all inputs and disabled all tools.')),
+    );
+  }
+
+  void _showAgentInspectorDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.analytics_outlined, color: Color(0xFF7C3AED)),
+            const SizedBox(width: 8),
+            const Text('Agent Inspector'),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+        contentPadding: EdgeInsets.zero,
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.95,
+          height: MediaQuery.of(context).size.height * 0.85,
+          child: AgentInspector(controller: _controller),
+        ),
+      ),
+    );
+  }
+
+  void _showSelectedToolsDialog() {
+    final groups = _getToolsetGroups();
+    final disabled = _controller.disabledToolNames;
+    final enabledTools = groups
+        .expand((g) => g.tools)
+        .where((t) => !disabled.contains(t.name))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Selected Tools'),
+        content: SizedBox(
+          width: 320,
+          child: enabledTools.isEmpty
+              ? const Text('No tools selected.')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: enabledTools.length,
+                  itemBuilder: (context, index) {
+                    final tool = enabledTools[index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.build, size: 16),
+                      title: Text(
+                        tool.name,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: tool.description != null && tool.description!.isNotEmpty
+                          ? Text(tool.description!, maxLines: 2, overflow: TextOverflow.ellipsis)
+                          : null,
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildAppBarActions(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 600;
+
+    final examplesButton = PopupMenuButton<String>(
+      icon: const Icon(Icons.lightbulb_outline),
+      tooltip: 'Load Prompt Templates / Examples',
+      onSelected: _handleExampleAction,
+      itemBuilder: (ctx) => const [
+        PopupMenuItem(
+          value: 'weather',
+          child: Row(
+            children: [
+              Icon(Icons.cloud_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('Template: Weather Report'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'ssh',
+          child: Row(
+            children: [
+              Icon(Icons.terminal_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('Template: SSH Command'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'chart',
+          child: Row(
+            children: [
+              Icon(Icons.bar_chart_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('Template: Generate Chart'),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (isWide) {
+      final showInspectorButton = _playgroundStarted && MediaQuery.sizeOf(context).width < 900;
+      return [
+        examplesButton,
+        IconButton(
+          icon: const Icon(Icons.restart_alt),
+          tooltip: 'Reset Conversation & Setup',
+          onPressed: _resetPlayground,
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_sweep_outlined),
+          tooltip: 'Clear Inputs & Tools',
+          onPressed: _clearSetupInputs,
+        ),
+        IconButton(
+          icon: const Icon(Icons.bookmarks_outlined),
+          tooltip: 'Load Saved Setup Configurations',
+          onPressed: _showLoadSetupsDialog,
+        ),
+        IconButton(
+          icon: const Icon(Icons.bookmark_add_outlined),
+          tooltip: 'Save Current Setup Configuration',
+          onPressed: _showSaveSetupDialog,
+        ),
+        const VerticalDivider(width: 16, indent: 12, endIndent: 12),
+        IconButton(
+          icon: const Icon(Icons.list_alt),
+          tooltip: 'Registered Tools Catalog',
+          onPressed: () => RegisteredToolsDialog.show(context, _controller),
+        ),
+        if (showInspectorButton)
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined),
+            tooltip: 'Agent Inspector',
+            onPressed: _showAgentInspectorDialog,
+          ),
+      ];
+    }
+
+    // Mobile / Narrow: Pinned buttons + Overflow
+    return [
+      examplesButton,
+      IconButton(
+        icon: const Icon(Icons.restart_alt),
+        tooltip: 'Reset Conversation & Setup',
+        onPressed: _resetPlayground,
+      ),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'More Actions',
+        onSelected: (val) {
+          if (val == 'clear') {
+            _clearSetupInputs();
+          } else if (val == 'load') {
+            _showLoadSetupsDialog();
+          } else if (val == 'save') {
+            _showSaveSetupDialog();
+          } else if (val == 'catalog') {
+            RegisteredToolsDialog.show(context, _controller);
+          } else if (val == 'inspector') {
+            _showAgentInspectorDialog();
+          }
+        },
+        itemBuilder: (ctx) => [
+          const PopupMenuItem(
+            value: 'clear',
+            child: Row(
+              children: [
+                Icon(Icons.delete_sweep_outlined, size: 20),
+                SizedBox(width: 12),
+                Text('Clear Inputs & Tools'),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'load',
+            child: Row(
+              children: [
+                Icon(Icons.bookmarks_outlined, size: 20),
+                SizedBox(width: 12),
+                Text('Load Configuration'),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'save',
+            child: Row(
+              children: [
+                Icon(Icons.bookmark_add_outlined, size: 20),
+                SizedBox(width: 12),
+                Text('Save Configuration'),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'catalog',
+            child: Row(
+              children: [
+                Icon(Icons.list_alt, size: 20),
+                SizedBox(width: 12),
+                Text('Tools Catalog'),
+              ],
+            ),
+          ),
+          if (_playgroundStarted)
+            const PopupMenuItem(
+              value: 'inspector',
+              child: Row(
+                children: [
+                  Icon(Icons.analytics_outlined, size: 20),
+                  SizedBox(width: 12),
+                  Text('Agent Inspector'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1414,68 +1854,115 @@ class _McpPlaygroundState extends State<McpPlayground> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        leading: _playgroundStarted
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back to Setup',
-                onPressed: _resetPlayground,
-              )
-            : null,
-        title: Text(
-          _playgroundStarted ? 'Agent Sandbox Chat' : 'AI Agent Playground',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Menu',
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
-        actions: [
-          // Pic 4 Toolbar Actions
-          IconButton(
-            icon: const Icon(Icons.restart_alt),
-            tooltip: 'Reset Conversation & Setup',
-            onPressed: _resetPlayground,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmarks_outlined),
-            tooltip: 'Load Saved Setup Configurations',
-            onPressed: _showLoadSetupsDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: 'Save Current Setup Configuration',
-            onPressed: _showSaveSetupDialog,
-          ),
-          const VerticalDivider(width: 16, indent: 12, endIndent: 12),
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            tooltip: 'Registered Tools Catalog',
-            onPressed: () => RegisteredToolsDialog.show(context, _controller),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            tooltip: 'Clear Chat Messages',
-            onPressed: _controller.messages.isEmpty ? null : _controller.clearChat,
-          ),
-          if (!isWide)
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: 'Configure Global Settings',
-              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-            ),
-        ],
+        title: const Text(
+          'Playground',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        actions: _buildAppBarActions(context),
       ),
-      endDrawer: isWide ? null : SettingsDrawer(controller: _controller),
-      body: isWide
-          ? Row(
-              children: [
-                Expanded(child: bodyContent),
-                const VerticalDivider(width: 1),
-                SizedBox(
-                  width: 360,
-                  child: Material(
-                    elevation: 1,
-                    color: theme.colorScheme.surface,
-                    child: SettingsPanel(controller: _controller),
-                  ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+              ),
+              child: const Text(
+                'AI Agent Playground',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_arrow),
+              title: const Text('Playground'),
+              onTap: () {
+                Navigator.pop(context);
+                _resetPlayground();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Playground Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  builder: (ctx) => Dialog(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: SettingsPanel(controller: _controller),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      body: isWide
+          ? LayoutBuilder(
+              builder: (context, constraints) {
+                final totalWidth = constraints.maxWidth;
+                if (!_playgroundStarted) {
+                  return bodyContent;
+                }
+                const minChatWidth = 300.0;
+                const minInspectorWidth = 250.0;
+
+                double chatWidth = totalWidth * _chatFraction;
+                if (chatWidth < minChatWidth) {
+                  chatWidth = minChatWidth;
+                }
+                if (totalWidth - chatWidth - 8 < minInspectorWidth) {
+                  chatWidth = totalWidth - minInspectorWidth - 8;
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: chatWidth,
+                      child: bodyContent,
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: (details) {
+                        setState(() {
+                          _chatFraction = (chatWidth + details.delta.dx) / totalWidth;
+                          if (_chatFraction < 0.2) _chatFraction = 0.2;
+                          if (_chatFraction > 0.85) _chatFraction = 0.85;
+                        });
+                      },
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: Container(
+                          width: 8,
+                          color: theme.dividerColor.withValues(alpha: 0.1),
+                          child: Center(
+                            child: Container(
+                              width: 1,
+                              color: theme.dividerColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: AgentInspector(controller: _controller),
+                    ),
+                  ],
+                );
+              },
             )
           : bodyContent,
     );

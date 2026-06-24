@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../models.dart';
 import '../playground_controller.dart';
-import '../llm_service.dart';
 import '../mcp_client.dart';
 import 'remote_mcp_dialog.dart';
+import 'edit_mcp_dialog.dart';
+import 'llm_config_form.dart';
 
 class SettingsDrawer extends StatelessWidget {
   final PlaygroundController controller;
@@ -34,43 +34,19 @@ class _SettingsPanelState extends State<SettingsPanel> {
   final _apiKeyCtrl = TextEditingController();
   final _baseUrlCtrl = TextEditingController();
   final _tempCtrl = TextEditingController(text: '0.2');
+  final _maxTokensCtrl = TextEditingController(text: '0');
+  final _maxToolOutputSizeCtrl = TextEditingController(text: '2560000');
+  final _tokenWarningThresholdCtrl = TextEditingController(text: '1500000');
+  final _topKCtrl = TextEditingController();
+  final _topPCtrl = TextEditingController();
+  final _repeatPenaltyCtrl = TextEditingController();
+  final _seedCtrl = TextEditingController();
 
-  int _maxTokens = 0;
-  double? _topP;
-  int? _topK;
-  double? _repeatPenalty;
-  int? _seed;
   bool _isSlm = false;
   bool _isMultiModal = true;
   bool _thinking = false;
   bool _useNativeToolCall = true;
   bool _useSafeToolCall = false;
-
-  bool _testingLlm = false;
-  bool _fetchingModels = false;
-  List<String> _fetchedModels = [];
-
-  final Map<LlmProvider, List<String>> _defaultModels = const {
-    LlmProvider.openai: ['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o3-mini'],
-    LlmProvider.claude: [
-      'claude-3-5-sonnet-latest',
-      'claude-3-5-haiku-latest',
-      'claude-3-opus-latest',
-    ],
-    LlmProvider.gemini: [
-      'gemini-2.5-flash',
-      'gemini-2.5-pro',
-      'gemini-2.0-flash-thinking-exp',
-    ],
-    LlmProvider.mistral: [
-      'mistral-large-latest',
-      'pixtral-large-latest',
-      'codestral-latest',
-      'open-mixtral-8x22b',
-    ],
-    LlmProvider.ollama: [],
-    LlmProvider.openaiCompatible: [],
-  };
 
   @override
   void initState() {
@@ -114,12 +90,28 @@ class _SettingsPanelState extends State<SettingsPanel> {
     if (_tempCtrl.text != config.temperature.toString()) {
       _tempCtrl.text = config.temperature.toString();
     }
+    if (_maxTokensCtrl.text != config.maxTokens.toString()) {
+      _maxTokensCtrl.text = config.maxTokens.toString();
+    }
+    if (_maxToolOutputSizeCtrl.text != config.maxToolOutputSize.toString()) {
+      _maxToolOutputSizeCtrl.text = config.maxToolOutputSize.toString();
+    }
+    if (_tokenWarningThresholdCtrl.text != config.tokenWarningThreshold.toString()) {
+      _tokenWarningThresholdCtrl.text = config.tokenWarningThreshold.toString();
+    }
+    if (_topKCtrl.text != (config.topK?.toString() ?? '')) {
+      _topKCtrl.text = config.topK?.toString() ?? '';
+    }
+    if (_topPCtrl.text != (config.topP?.toString() ?? '')) {
+      _topPCtrl.text = config.topP?.toString() ?? '';
+    }
+    if (_repeatPenaltyCtrl.text != (config.repeatPenalty?.toString() ?? '')) {
+      _repeatPenaltyCtrl.text = config.repeatPenalty?.toString() ?? '';
+    }
+    if (_seedCtrl.text != (config.seed?.toString() ?? '')) {
+      _seedCtrl.text = config.seed?.toString() ?? '';
+    }
 
-    _maxTokens = config.maxTokens;
-    _topP = config.topP;
-    _topK = config.topK;
-    _repeatPenalty = config.repeatPenalty;
-    _seed = config.seed;
     _isSlm = config.isSlm;
     _isMultiModal = config.isMultiModal;
     _thinking = config.thinking;
@@ -134,6 +126,13 @@ class _SettingsPanelState extends State<SettingsPanel> {
     _apiKeyCtrl.dispose();
     _baseUrlCtrl.dispose();
     _tempCtrl.dispose();
+    _maxTokensCtrl.dispose();
+    _maxToolOutputSizeCtrl.dispose();
+    _tokenWarningThresholdCtrl.dispose();
+    _topKCtrl.dispose();
+    _topPCtrl.dispose();
+    _repeatPenaltyCtrl.dispose();
+    _seedCtrl.dispose();
     super.dispose();
   }
 
@@ -141,17 +140,23 @@ class _SettingsPanelState extends State<SettingsPanel> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final tempVal = double.tryParse(_tempCtrl.text.trim()) ?? 0.2;
+    final maxTokensVal = int.tryParse(_maxTokensCtrl.text.trim()) ?? 0;
+    final maxToolSizeVal = int.tryParse(_maxToolOutputSizeCtrl.text.trim()) ?? 2560000;
+    final tokenWarningVal = int.tryParse(_tokenWarningThresholdCtrl.text.trim()) ?? 1500000;
+
     final updated = LlmConfig(
       provider: _selectedProvider,
       model: _modelCtrl.text.trim(),
       apiKey: _apiKeyCtrl.text.trim(),
       baseUrl: _baseUrlCtrl.text.trim(),
       temperature: tempVal,
-      maxTokens: _maxTokens,
-      topP: _topP,
-      topK: _topK,
-      repeatPenalty: _repeatPenalty,
-      seed: _seed,
+      maxTokens: maxTokensVal,
+      maxToolOutputSize: maxToolSizeVal,
+      tokenWarningThreshold: tokenWarningVal,
+      topP: double.tryParse(_topPCtrl.text.trim()),
+      topK: int.tryParse(_topKCtrl.text.trim()),
+      repeatPenalty: double.tryParse(_repeatPenaltyCtrl.text.trim()),
+      seed: int.tryParse(_seedCtrl.text.trim()),
       isSlm: _isSlm,
       isMultiModal: _isMultiModal,
       thinking: _thinking,
@@ -167,158 +172,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
     }
   }
 
-  Future<void> _testLlmConnection() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-
-    setState(() => _testingLlm = true);
-
-    try {
-      final tempVal = double.tryParse(_tempCtrl.text.trim()) ?? 0.2;
-      final testConfig = LlmConfig(
-        provider: _selectedProvider,
-        model: _modelCtrl.text.trim(),
-        apiKey: _apiKeyCtrl.text.trim(),
-        baseUrl: _baseUrlCtrl.text.trim(),
-        temperature: tempVal,
-        maxTokens: 10,
-      );
-
-      final response = await LLMService.generate(
-        config: testConfig,
-        messages: [
-          ChatMessage(
-            id: 'test-conn',
-            role: ChatRole.user,
-            content: 'Respond with the single word "OK" if you can hear me.',
-            timestamp: DateTime.now(),
-          ),
-        ],
-        tools: [],
-      );
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Connection Successful'),
-            ],
-          ),
-          content: Text(
-            'Provider responded! Model reply:\n\n"${response.text.trim()}"',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Connection Failed'),
-            ],
-          ),
-          content: Text(e.toString()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _testingLlm = false);
-      }
-    }
-  }
-
-  Future<void> _fetchAvailableModels() async {
-    setState(() => _fetchingModels = true);
-    try {
-      final provider = _selectedProvider;
-      final baseUrl = _baseUrlCtrl.text.trim();
-      final apiKey = _apiKeyCtrl.text.trim();
-      final List<String> list = [];
-
-      if (provider == LlmProvider.ollama) {
-        final base = (baseUrl.isEmpty ? 'http://localhost:11434' : baseUrl)
-            .replaceAll(RegExp(r'/+$'), '');
-        final tagsBase = base.endsWith('/api') ? base : '$base/api';
-        final url = Uri.parse('$tagsBase/tags');
-        final headers = apiKey.isNotEmpty
-            ? {'Authorization': 'Bearer $apiKey'}
-            : <String, String>{};
-        final resp = await http
-            .get(url, headers: headers)
-            .timeout(const Duration(seconds: 10));
-        if (resp.statusCode >= 200 && resp.statusCode < 300) {
-          final data = jsonDecode(resp.body) as Map<String, dynamic>;
-          final fetched = (data['models'] as List<dynamic>? ?? [])
-              .map((m) => (m as Map<String, dynamic>)['name'] as String? ?? '')
-              .where((n) => n.isNotEmpty)
-              .toList();
-          list.addAll(fetched);
-        }
-      } else {
-        var resolvedBaseUrl = baseUrl;
-        if (resolvedBaseUrl.isEmpty) {
-          if (provider == LlmProvider.openai) {
-            resolvedBaseUrl = 'https://api.openai.com/v1';
-          } else if (provider == LlmProvider.mistral) {
-            resolvedBaseUrl = 'https://api.mistral.ai/v1';
-          }
-        }
-        if (resolvedBaseUrl.isNotEmpty) {
-          final base = resolvedBaseUrl.replaceAll(RegExp(r'/+$'), '');
-          final url = Uri.parse('$base/models');
-          final headers = {
-            'Accept': 'application/json',
-            if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-          };
-          final resp = await http
-              .get(url, headers: headers)
-              .timeout(const Duration(seconds: 10));
-          if (resp.statusCode >= 200 && resp.statusCode < 300) {
-            final data = jsonDecode(resp.body) as Map<String, dynamic>;
-            final fetched = (data['data'] as List<dynamic>? ?? [])
-                .map((m) => (m as Map<String, dynamic>)['id'] as String? ?? '')
-                .where((n) => n.isNotEmpty)
-                .toList();
-            list.addAll(fetched);
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _fetchedModels = list;
-          if (list.isNotEmpty && _modelCtrl.text.trim().isEmpty) {
-            _modelCtrl.text = list.first;
-          }
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() => _fetchingModels = false);
-      }
-    }
-  }
-
   Future<void> _testMcpServerConnection(McpServerConfig server) async {
     showDialog(
       context: context,
@@ -330,6 +183,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         server.url,
         mcpEndpoint: server.mcpEndpoint,
         bearerToken: server.apiKey,
+        apiPassword: server.apiPassword,
       );
       await tempClient.connect().timeout(const Duration(seconds: 10));
       final toolsCount = tempClient.availableTools.length;
@@ -368,6 +222,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         server.url,
         mcpEndpoint: server.mcpEndpoint,
         bearerToken: server.apiKey,
+        apiPassword: server.apiPassword,
       );
       await tempClient.connect().timeout(const Duration(seconds: 10));
       final tools = tempClient.availableTools;
@@ -473,11 +328,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final showBaseUrl =
-        _selectedProvider == LlmProvider.ollama ||
-        _selectedProvider == LlmProvider.openaiCompatible ||
-        _selectedProvider == LlmProvider.mistral;
-
     return SafeArea(
       child: Column(
         children: [
@@ -510,150 +360,22 @@ class _SettingsPanelState extends State<SettingsPanel> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      DropdownButtonFormField<LlmProvider>(
-                        key: ValueKey(_selectedProvider),
-                        initialValue: _selectedProvider,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: LlmProvider.values.map((provider) {
-                          return DropdownMenuItem(
-                            value: provider,
-                            child: Text(provider.displayName),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              _selectedProvider = val;
-                              _fetchedModels = [];
-                              if (val == LlmProvider.gemini &&
-                                  _modelCtrl.text.isEmpty) {
-                                _modelCtrl.text = 'gemini-2.5-flash';
-                              } else if (val == LlmProvider.openai &&
-                                  _modelCtrl.text.isEmpty) {
-                                _modelCtrl.text = 'gpt-4o-mini';
-                              } else if (val == LlmProvider.claude &&
-                                  _modelCtrl.text.isEmpty) {
-                                _modelCtrl.text = 'claude-3-5-sonnet-latest';
-                              } else if (val == LlmProvider.mistral &&
-                                  _modelCtrl.text.isEmpty) {
-                                _modelCtrl.text = 'mistral-large-latest';
-                              }
-                            });
-                          }
+                      LlmConfigForm(
+                        provider: _selectedProvider,
+                        onProviderChanged: (val) {
+                          setState(() {
+                            _selectedProvider = val;
+                          });
                         },
+                        modelCtrl: _modelCtrl,
+                        apiKeyCtrl: _apiKeyCtrl,
+                        baseUrlCtrl: _baseUrlCtrl,
                       ),
                       if (_selectedProvider != LlmProvider.none) ...[
-                        // Autocomplete for Model name
-                        Text(
-                          'Model Name',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Autocomplete<String>(
-                          initialValue: _modelCtrl.value,
-                          optionsBuilder: (textEditingValue) {
-                            final defaultOpts =
-                                _defaultModels[_selectedProvider] ?? [];
-                            final models = _fetchedModels.isNotEmpty
-                                ? _fetchedModels
-                                : defaultOpts;
-                            if (textEditingValue.text.isEmpty) {
-                              return models;
-                            }
-                            return models.where(
-                              (m) => m.toLowerCase().contains(
-                                textEditingValue.text.toLowerCase(),
-                              ),
-                            );
-                          },
-                          fieldViewBuilder:
-                              (ctx, controller, focusNode, onSubmitted) {
-                                if (controller.text != _modelCtrl.text) {
-                                  controller.text = _modelCtrl.text;
-                                }
-                                return TextFormField(
-                                  controller: controller,
-                                  focusNode: focusNode,
-                                  onChanged: (value) {
-                                    _modelCtrl.text = value;
-                                  },
-                                  decoration: const InputDecoration(
-                                    hintText: 'Enter or select model name',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                  validator: (v) =>
-                                      v == null || v.trim().isEmpty
-                                      ? 'Model name is required'
-                                      : null,
-                                );
-                              },
-                          onSelected: (v) {
-                            _modelCtrl.text = v;
-                          },
-                        ),
-
-                        // API Key (Always Visible)
-                        Text(
-                          'API Key / Token (Always Visible)',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        TextFormField(
-                          controller: _apiKeyCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'API Key',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-
-                        // Base Endpoint Url (Visible for Ollama / Custom API / Mistral)
-                        if (showBaseUrl)
-                          TextFormField(
-                            controller: _baseUrlCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Base Endpoint URL',
-                              hintText: 'e.g. http://localhost:11434/api',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                          ),
-
-                        // Refresh / Fetch model list button (if provider supports it)
-                        if (_selectedProvider == LlmProvider.ollama ||
-                            _selectedProvider == LlmProvider.openai ||
-                            _selectedProvider == LlmProvider.mistral ||
-                            _selectedProvider == LlmProvider.openaiCompatible)
-                          OutlinedButton.icon(
-                            onPressed: _fetchingModels
-                                ? null
-                                : _fetchAvailableModels,
-                            icon: _fetchingModels
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.sync, size: 16),
-                            label: Text(
-                              _fetchedModels.isEmpty
-                                  ? 'Fetch Available Models'
-                                  : 'Refresh Models (${_fetchedModels.length})',
-                            ),
-                          ),
-
+                        const SizedBox(height: 12),
                         ExpansionTile(
                           title: const Text(
-                            'Advanced Model Settings',
+                            'Advanced Hyperparameters & Flags',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -661,118 +383,34 @@ class _SettingsPanelState extends State<SettingsPanel> {
                           ),
                           tilePadding: EdgeInsets.zero,
                           children: [
-                            Column(
-                              spacing: 8,
-                              children: [
-                                TextFormField(
-                                  controller: _tempCtrl,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Temperature',
-                                    hintText: '0.0 - 2.0 (e.g. 0.2)',
-                                    border: OutlineInputBorder(),
-                                    isDense: true,
-                                  ),
-                                  validator: (v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return null;
-                                    }
-                                    final d = double.tryParse(v.trim());
-                                    if (d == null) {
-                                      return 'Must be a valid decimal number';
-                                    }
-                                    if (d < 0.0 || d > 2.0) {
-                                      return 'Must be between 0.0 and 2.0';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                  title: const Text(
-                                    'Small Language Model (SLM)',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  subtitle: const Text(
-                                    'Enforce short and simple warmup instructions',
-                                    style: TextStyle(fontSize: 10),
-                                  ),
-                                  value: _isSlm,
-                                  onChanged: (val) =>
-                                      setState(() => _isSlm = val),
-                                ),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                  title: const Text(
-                                    'Multi-Modal Capabilities',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  value: _isMultiModal,
-                                  onChanged: (val) =>
-                                      setState(() => _isMultiModal = val),
-                                ),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                  title: const Text(
-                                    'Allow Reasoning / Thinking',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  value: _thinking,
-                                  onChanged: (val) =>
-                                      setState(() => _thinking = val),
-                                ),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  dense: true,
-                                  title: const Text(
-                                    'Use Native Tool Calls',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                  value: _useNativeToolCall,
-                                  onChanged: (val) =>
-                                      setState(() => _useNativeToolCall = val),
-                                ),
-                              ],
+                            LlmAdvancedSettingsForm(
+                              tempCtrl: _tempCtrl,
+                              maxTokensCtrl: _maxTokensCtrl,
+                              maxToolOutputSizeCtrl: _maxToolOutputSizeCtrl,
+                              tokenWarningThresholdCtrl: _tokenWarningThresholdCtrl,
+                              topKCtrl: _topKCtrl,
+                              topPCtrl: _topPCtrl,
+                              repeatPenaltyCtrl: _repeatPenaltyCtrl,
+                              seedCtrl: _seedCtrl,
+                              thinking: _thinking,
+                              onThinkingChanged: (val) => setState(() => _thinking = val),
+                              isSlm: _isSlm,
+                              onIsSlmChanged: (val) => setState(() => _isSlm = val),
+                              isMultiModal: _isMultiModal,
+                              onIsMultiModalChanged: (val) => setState(() => _isMultiModal = val),
+                              useNativeToolCall: _useNativeToolCall,
+                              onUseNativeToolCallChanged: (val) => setState(() => _useNativeToolCall = val),
                             ),
                           ],
                         ),
-                        Row(
-                          spacing: 8,
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _testingLlm
-                                    ? null
-                                    : _testLlmConnection,
-                                icon: _testingLlm
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.wifi_tethering,
-                                        size: 16,
-                                      ),
-                                label: const Text('Test Connection'),
-                              ),
-                            ),
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: _saveLlmSettings,
-                                icon: const Icon(Icons.save_outlined, size: 16),
-                                label: const Text('Save Settings'),
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _saveLlmSettings,
+                            icon: const Icon(Icons.save_outlined, size: 16),
+                            label: const Text('Save Settings'),
+                          ),
                         ),
                       ],
                       const Divider(height: 24),
@@ -833,6 +471,18 @@ class _SettingsPanelState extends State<SettingsPanel> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.edit_outlined,
+                                          size: 18,
+                                        ),
+                                        onPressed: () => EditMcpServerDialog.show(
+                                          context,
+                                          server,
+                                          widget.controller,
+                                        ),
+                                        tooltip: 'Edit Details',
                                       ),
                                       IconButton(
                                         icon: const Icon(

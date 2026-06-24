@@ -13,7 +13,6 @@ dependencies:
   http: ^1.2.1
   uuid: ^4.5.3
   shared_preferences: ^2.3.5
-  google_generative_ai: ^0.4.7
   openai_dart: 0.6.2
   anthropic_sdk_dart: ^0.3.1
   ollama_dart: ^0.3.0+1
@@ -21,6 +20,7 @@ dependencies:
   dartssh2: ^2.18.0
   file_picker: ^8.0.0
   mime: ^1.0.6
+  googleai_dart: ^8.0.0
 
 dev_dependencies:
   flutter_test:
