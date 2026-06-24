@@ -19,7 +19,8 @@ dependencies:
   ollama_dart: ^0.3.0+1
   flutter_markdown: ^0.7.7
   dartssh2: ^2.18.0
-  fl_chart: ^0.69.2
+  file_picker: ^8.0.0
+  mime: ^1.0.6
 
 dev_dependencies:
   flutter_test:

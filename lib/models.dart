@@ -11,7 +11,8 @@ enum LlmProvider {
   claude,
   gemini,
   ollama,
-  openaiCompatible;
+  openaiCompatible,
+  mistral;
 
   String get configKey {
     switch (this) {
@@ -27,6 +28,8 @@ enum LlmProvider {
         return 'ollama';
       case LlmProvider.openaiCompatible:
         return 'openai_compatible';
+      case LlmProvider.mistral:
+        return 'mistral';
     }
   }
 
@@ -53,6 +56,8 @@ enum LlmProvider {
         return 'Ollama (Local)';
       case LlmProvider.openaiCompatible:
         return 'Custom OpenAI Compatible';
+      case LlmProvider.mistral:
+        return 'Mistral AI';
     }
   }
 }
@@ -147,6 +152,7 @@ class McpServerConfig {
   final String id;
   final String name;
   final String url;
+  final String mcpEndpoint;
   final String? apiKey; // Bearer token (optional)
   final String? apiPassword; // Optional basic auth/headers parameter
   final bool enabled;
@@ -155,15 +161,37 @@ class McpServerConfig {
     required this.id,
     required this.name,
     required this.url,
+    this.mcpEndpoint = '/mcp',
     this.apiKey,
     this.apiPassword,
     this.enabled = true,
   });
 
+  McpServerConfig copyWith({
+    String? id,
+    String? name,
+    String? url,
+    String? mcpEndpoint,
+    String? apiKey,
+    String? apiPassword,
+    bool? enabled,
+  }) {
+    return McpServerConfig(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      url: url ?? this.url,
+      mcpEndpoint: mcpEndpoint ?? this.mcpEndpoint,
+      apiKey: apiKey ?? this.apiKey,
+      apiPassword: apiPassword ?? this.apiPassword,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'url': url,
+        'mcpEndpoint': mcpEndpoint,
         if (apiKey != null) 'apiKey': apiKey,
         if (apiPassword != null) 'apiPassword': apiPassword,
         'enabled': enabled,
@@ -174,6 +202,7 @@ class McpServerConfig {
       id: json['id'] as String? ?? const Uuid().v4(),
       name: json['name'] as String? ?? 'unnamed_mcp',
       url: json['url'] as String? ?? '',
+      mcpEndpoint: json['mcpEndpoint'] as String? ?? '/mcp',
       apiKey: json['apiKey'] as String?,
       apiPassword: json['apiPassword'] as String?,
       enabled: json['enabled'] as bool? ?? true,
@@ -577,6 +606,68 @@ class ChatMessage {
       attachments: json['attachments'] != null
           ? (json['attachments'] as List).map((a) => MessageAttachment.fromJson(a)).toList()
           : null,
+    );
+  }
+}
+
+class SavedPlaygroundSetup {
+  final String id;
+  final String name;
+  final DateTime createdAt;
+  final String systemPrompt;
+  final String initialPrompt;
+  final List<String> enabledToolNames;
+  final bool chatMode;
+  final bool stopAfterToolCall;
+  final bool useCustomLlm;
+  final LlmConfig? customLlmConfig;
+
+  // SSH Override parameters & generic parameters
+  final Map<String, dynamic>? mcpInitParams;
+
+  SavedPlaygroundSetup({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+    required this.systemPrompt,
+    required this.initialPrompt,
+    required this.enabledToolNames,
+    required this.chatMode,
+    required this.stopAfterToolCall,
+    required this.useCustomLlm,
+    this.customLlmConfig,
+    this.mcpInitParams,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'createdAt': createdAt.toIso8601String(),
+        'systemPrompt': systemPrompt,
+        'initialPrompt': initialPrompt,
+        'enabledToolNames': enabledToolNames,
+        'chatMode': chatMode,
+        'stopAfterToolCall': stopAfterToolCall,
+        'useCustomLlm': useCustomLlm,
+        'customLlmConfig': customLlmConfig?.toJson(),
+        'mcpInitParams': mcpInitParams,
+      };
+
+  factory SavedPlaygroundSetup.fromJson(Map<String, dynamic> json) {
+    return SavedPlaygroundSetup(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      systemPrompt: json['systemPrompt'] as String? ?? '',
+      initialPrompt: json['initialPrompt'] as String? ?? '',
+      enabledToolNames: (json['enabledToolNames'] as List?)?.cast<String>() ?? [],
+      chatMode: json['chatMode'] as bool? ?? false,
+      stopAfterToolCall: json['stopAfterToolCall'] as bool? ?? false,
+      useCustomLlm: json['useCustomLlm'] as bool? ?? false,
+      customLlmConfig: json['customLlmConfig'] != null
+          ? LlmConfig.fromJson(json['customLlmConfig'] as Map<String, dynamic>)
+          : null,
+      mcpInitParams: json['mcpInitParams'] as Map<String, dynamic>?,
     );
   }
 }

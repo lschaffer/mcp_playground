@@ -4,6 +4,7 @@ import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:openai_dart/openai_dart.dart' as openai;
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:ollama_dart/ollama_dart.dart' as ollama;
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'models.dart';
 
@@ -41,6 +42,8 @@ class LLMService {
       case LlmProvider.openai:
       case LlmProvider.openaiCompatible:
         return await _generateOpenAI(config, messages, tools, systemPrompt);
+      case LlmProvider.mistral:
+        return await _generateMistral(config, messages, tools, systemPrompt);
       case LlmProvider.claude:
         return await _generateAnthropic(config, messages, tools, systemPrompt);
       case LlmProvider.gemini:
@@ -55,17 +58,13 @@ class LLMService {
   // ═══════════════════════════════════════════════════════════════
   // 1. OpenAI Adapter
   // ═══════════════════════════════════════════════════════════════
-  static Future<LLMResponse> _generateOpenAI(
+  static Future<LLMResponse> _generateOpenAIWithClient(
+    openai.OpenAIClient client,
     LlmConfig config,
     List<ChatMessage> messages,
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = openai.OpenAIClient(
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : null,
-    );
-
     try {
       final List<openai.ChatCompletionMessage> openAiMsgs = [];
 
@@ -114,7 +113,7 @@ class LLMService {
             openAiMsgs.add(
               openai.ChatCompletionMessage.tool(
                 toolCallId: msg.id,
-                content: jsonEncode(msg.toolResult?.toJson() ?? {}),
+                content: msg.content,
               ),
             );
           case ChatRole.system:
@@ -144,12 +143,7 @@ class LLMService {
 
       final response = await client.createChatCompletion(
         request: openai.CreateChatCompletionRequest(
-          model: openai.ChatCompletionModel.model(
-            openai.ChatCompletionModels.values.firstWhere(
-              (m) => m.name == config.model,
-              orElse: () => openai.ChatCompletionModels.gpt4oMini,
-            ),
-          ),
+          model: openai.ChatCompletionModel.modelId(config.model.trim().isNotEmpty ? config.model : 'gpt-4o-mini'),
           messages: openAiMsgs,
           tools: openAiTools.isNotEmpty ? openAiTools : null,
           temperature: config.temperature,
@@ -185,6 +179,33 @@ class LLMService {
     } finally {
       // Client is cleaned up by garbage collection
     }
+  }
+
+  static Future<LLMResponse> _generateOpenAI(
+    LlmConfig config,
+    List<ChatMessage> messages,
+    List<MCPTool> tools,
+    String? systemPrompt,
+  ) async {
+    final client = openai.OpenAIClient(
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : null,
+    );
+    return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
+  }
+
+  static Future<LLMResponse> _generateMistral(
+    LlmConfig config,
+    List<ChatMessage> messages,
+    List<MCPTool> tools,
+    String? systemPrompt,
+  ) async {
+    final client = openai.OpenAIClient(
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.mistral.ai/v1',
+      client: _MistralPatchClient(http.Client()),
+    );
+    return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -242,7 +263,7 @@ class LLMService {
                   anthropic.Block.toolResult(
                     toolUseId: msg.id,
                     content: anthropic.ToolResultBlockContent.text(
-                      jsonEncode(msg.toolResult?.toJson() ?? {}),
+                      msg.content,
                     ),
                   ),
                 ]),
@@ -376,7 +397,7 @@ class LLMService {
             gemini.Content('function', [
               gemini.FunctionResponse(
                 msg.toolName ?? '',
-                msg.toolResult?.toJson() ?? {},
+                {'content': msg.content},
               )
             ]),
           );
@@ -456,10 +477,15 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
+    final headers = <String, String>{};
+    if (config.apiKey.trim().isNotEmpty) {
+      headers['Authorization'] = 'Bearer ${config.apiKey.trim()}';
+    }
     final client = ollama.OllamaClient(
       baseUrl: config.baseUrl.trim().isNotEmpty
           ? config.baseUrl
           : 'http://localhost:11434/api',
+      headers: headers,
     );
 
     try {
@@ -554,4 +580,159 @@ class LLMService {
       // ollama client uses standard http which closes connection on garbage collect
     }
   }
+}
+
+class _MistralPatchClient extends http.BaseClient {
+  _MistralPatchClient(this._inner);
+  final http.Client _inner;
+
+  Map<String, dynamic> _sanitizeMistralChatRequest(
+    Map<String, dynamic> payload,
+  ) {
+    final rawMessages = payload['messages'];
+    if (rawMessages is! List) return payload;
+
+    final sanitized = <dynamic>[];
+    bool changed = false;
+
+    for (final item in rawMessages) {
+      if (item is! Map) {
+        sanitized.add(item);
+        continue;
+      }
+
+      final msg = Map<String, dynamic>.from(item);
+      final role = (msg['role'] ?? '').toString();
+
+      if (role == 'user') {
+        final content = msg['content'];
+        if (content is List) {
+          final patchedContent = content.map((part) {
+            if (part is! Map) return part;
+            final partMap = Map<String, dynamic>.from(part);
+            if (partMap['type'] == 'image_url') {
+              final imageUrl = partMap['image_url'];
+              if (imageUrl is Map) {
+                final url = imageUrl['url'];
+                if (url is String) {
+                  partMap['image_url'] = url;
+                  changed = true;
+                }
+              }
+            }
+            return partMap;
+          }).toList();
+          msg['content'] = patchedContent;
+        }
+      }
+
+      if (role == 'tool') {
+        final toolCallId = (msg['tool_call_id'] ?? '').toString().trim();
+        final prev = sanitized.isNotEmpty && sanitized.last is Map
+            ? Map<String, dynamic>.from(sanitized.last as Map)
+            : null;
+
+        bool hasMatchingAssistantToolCall = false;
+        if (prev != null && (prev['role']?.toString() == 'assistant')) {
+          final toolCalls = prev['tool_calls'];
+          if (toolCalls is List) {
+            hasMatchingAssistantToolCall = toolCalls.any((tc) {
+              if (tc is! Map) return false;
+              final tcMap = Map<String, dynamic>.from(tc);
+              return (tcMap['id'] ?? '').toString().trim() == toolCallId;
+            });
+          }
+        }
+
+        if (!hasMatchingAssistantToolCall && toolCallId.isNotEmpty) {
+          sanitized.add({
+            'role': 'assistant',
+            'content': null,
+            'tool_calls': [
+              {
+                'id': toolCallId,
+                'type': 'function',
+                'function': {'name': 'unknown_tool', 'arguments': '{}'},
+              },
+            ],
+          });
+          changed = true;
+        }
+      }
+
+      sanitized.add(msg);
+    }
+
+    if (changed) {
+      payload['messages'] = sanitized;
+    }
+    return payload;
+  }
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    http.BaseRequest requestToSend = request;
+
+    if (request.method.toUpperCase() == 'POST' &&
+        request.url.path.contains('chat/completions') &&
+        request is http.Request) {
+      try {
+        final decoded = jsonDecode(request.body);
+        if (decoded is Map<String, dynamic>) {
+          final patchedPayload = _sanitizeMistralChatRequest(decoded);
+          requestToSend = http.Request(request.method, request.url)
+            ..headers.addAll(request.headers)
+            ..body = jsonEncode(patchedPayload);
+        }
+      } catch (_) {}
+    }
+
+    final streamed = await _inner.send(requestToSend);
+
+    if (!request.url.path.contains('chat/completions')) return streamed;
+
+    final bodyBytes = await streamed.stream.toBytes();
+    final bodyStr = utf8.decode(bodyBytes);
+
+    String patched = bodyStr;
+    try {
+      final dynamic decoded = jsonDecode(bodyStr);
+      if (decoded is Map<String, dynamic>) {
+        bool changed = false;
+        final choices = decoded['choices'];
+        if (choices is List) {
+          for (final choice in choices) {
+            if (choice is! Map<String, dynamic>) continue;
+            final msg = choice['message'];
+            if (msg is! Map<String, dynamic>) continue;
+            final toolCalls = msg['tool_calls'];
+            if (toolCalls is! List) continue;
+            for (final tc in toolCalls) {
+              if (tc is Map<String, dynamic> && !tc.containsKey('type')) {
+                tc['type'] = 'function';
+                changed = true;
+              }
+            }
+          }
+        }
+        if (changed) {
+          patched = jsonEncode(decoded);
+        }
+      }
+    } catch (_) {}
+
+    final patchedBytes = utf8.encode(patched);
+    return http.StreamedResponse(
+      http.ByteStream.fromBytes(patchedBytes),
+      streamed.statusCode,
+      contentLength: patchedBytes.length,
+      headers: streamed.headers,
+      isRedirect: streamed.isRedirect,
+      persistentConnection: streamed.persistentConnection,
+      reasonPhrase: streamed.reasonPhrase,
+    );
+  }
+
+  @override
+  void close() => _inner.close();
 }

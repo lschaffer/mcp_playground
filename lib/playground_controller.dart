@@ -13,11 +13,14 @@ abstract class McpPlaygroundStorageDelegate {
   Future<LlmConfig?> loadLlmConfig();
   Future<void> saveServers(List<McpServerConfig> servers);
   Future<List<McpServerConfig>> loadServers();
+  Future<void> saveSetups(List<SavedPlaygroundSetup> setups);
+  Future<List<SavedPlaygroundSetup>> loadSetups();
 }
 
 class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   static const _kLlm = 'mcp_playground_llm_config';
   static const _kServers = 'mcp_playground_servers';
+  static const _kSetups = 'mcp_playground_saved_setups';
 
   @override
   Future<void> saveLlmConfig(LlmConfig config) async {
@@ -56,6 +59,26 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
       return [];
     }
   }
+
+  @override
+  Future<void> saveSetups(List<SavedPlaygroundSetup> setups) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = setups.map((s) => s.toJson()).toList();
+    await prefs.setString(_kSetups, jsonEncode(list));
+  }
+
+  @override
+  Future<List<SavedPlaygroundSetup>> loadSetups() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kSetups);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list.map((item) => SavedPlaygroundSetup.fromJson(item as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }
 
 class PlaygroundController extends ChangeNotifier {
@@ -68,9 +91,18 @@ class PlaygroundController extends ChangeNotifier {
   bool _loading = false;
   bool _generating = false;
   String? _errorMessage;
+  bool _stopAfterToolCall = false;
+  final Set<String> _disabledToolNames = {};
+  
+  String _systemPrompt = '';
+  bool _chatMode = false;
+  LlmConfig? _customLlmConfig;
 
+  final List<SavedPlaygroundSetup> _savedSetups = [];
   final MultiMCPManager _mcpManager = MultiMCPManager();
   final Uuid _uuid = const Uuid();
+
+  final Map<String, dynamic> _mcpInitParams = {};
 
   PlaygroundController({
     LlmConfig? initialLlmConfig,
@@ -89,14 +121,31 @@ class PlaygroundController extends ChangeNotifier {
     }
     // Register built-in local tools
     _localTools.addAll([
-      WeatherLocalTool(),
-      SshLocalTool(),
-      ChartLocalTool(),
+      GetCurrentWeatherTool(),
+      GetHourlyForecastTool(),
+      GetDailyForecastTool(),
+      GeocodeWeatherCityTool(),
+      SshListDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshReadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshDownloadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshUploadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshExecuteCommandTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshMakeDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      SshRemoveDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
+      CreateChartPngTool(),
     ]);
     if (customLocalTools != null) {
       _localTools.addAll(customLocalTools);
     }
     _initAndLoad();
+  }
+
+  Map<String, dynamic> get mcpInitParams => _mcpInitParams;
+
+  void updateMcpInitParams(Map<String, dynamic> params) {
+    _mcpInitParams.clear();
+    _mcpInitParams.addAll(params);
+    notifyListeners();
   }
 
   // --- Getters ---
@@ -107,6 +156,65 @@ class PlaygroundController extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isGenerating => _generating;
   String? get errorMessage => _errorMessage;
+
+  bool get stopAfterToolCall => _stopAfterToolCall;
+  set stopAfterToolCall(bool val) {
+    _stopAfterToolCall = val;
+    notifyListeners();
+  }
+
+  List<SavedPlaygroundSetup> get savedSetups => List.unmodifiable(_savedSetups);
+
+  String get systemPrompt => _systemPrompt;
+  set systemPrompt(String val) {
+    _systemPrompt = val;
+    notifyListeners();
+  }
+
+  bool get chatMode => _chatMode;
+  set chatMode(bool val) {
+    _chatMode = val;
+    notifyListeners();
+  }
+
+  LlmConfig? get customLlmConfig => _customLlmConfig;
+  set customLlmConfig(LlmConfig? val) {
+    _customLlmConfig = val;
+    notifyListeners();
+  }
+
+  LlmConfig get activeLlmConfig => _customLlmConfig ?? _llmConfig;
+
+  Future<void> saveSetup(SavedPlaygroundSetup setup) async {
+    final idx = _savedSetups.indexWhere((s) => s.id == setup.id);
+    if (idx >= 0) {
+      _savedSetups[idx] = setup;
+    } else {
+      _savedSetups.add(setup);
+    }
+    await _storage.saveSetups(_savedSetups);
+    notifyListeners();
+  }
+
+  Future<void> deleteSetup(String id) async {
+    _savedSetups.removeWhere((s) => s.id == id);
+    await _storage.saveSetups(_savedSetups);
+    notifyListeners();
+  }
+
+  List<MCPClientDef> get mcpClients => _mcpManager.clients;
+
+  Set<String> get disabledToolNames => _disabledToolNames;
+  void toggleToolEnabled(String toolName, bool enabled) {
+    if (enabled) {
+      _disabledToolNames.remove(toolName);
+    } else {
+      _disabledToolNames.add(toolName);
+    }
+    notifyListeners();
+  }
+
+  List<MCPTool> get externalTools => _mcpManager.availableTools;
 
   Future<void> _initAndLoad() async {
     _loading = true;
@@ -121,6 +229,9 @@ class PlaygroundController extends ChangeNotifier {
         _servers.clear();
         _servers.addAll(savedServers);
       }
+      final setups = await _storage.loadSetups();
+      _savedSetups.clear();
+      _savedSetups.addAll(setups);
       await _syncMcpServers();
     } catch (e) {
       _errorMessage = 'Failed to load configuration: $e';
@@ -176,6 +287,7 @@ class PlaygroundController extends ChangeNotifier {
     for (final s in activeServers) {
       final client = MCPClient(
         s.url,
+        mcpEndpoint: s.mcpEndpoint,
         bearerToken: s.apiKey,
         logCallback: (msg, {bool isError = false}) => debugPrint('[Playground MCP Log: ${s.name}] $msg'),
       );
@@ -194,9 +306,62 @@ class PlaygroundController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<ChatMessage>> _preprocessMessagesForLlm(List<ChatMessage> messages, bool isMultiModal) async {
+    final List<ChatMessage> processed = [];
+    for (final m in messages) {
+      if (m.role == ChatRole.user && m.attachments != null && m.attachments!.isNotEmpty) {
+        final buffer = StringBuffer(m.content);
+        final imagesOnly = <MessageAttachment>[];
+        for (final att in m.attachments!) {
+          final mime = att.mimeType.toLowerCase();
+          final name = att.name.toLowerCase();
+          final isText = mime.startsWith('text/') ||
+              name.endsWith('.txt') ||
+              name.endsWith('.md') ||
+              name.endsWith('.csv') ||
+              name.endsWith('.json') ||
+              name.endsWith('.yaml') ||
+              name.endsWith('.yml') ||
+              name.endsWith('.xml') ||
+              name.endsWith('.html') ||
+              name.endsWith('.js') ||
+              name.endsWith('.py') ||
+              name.endsWith('.dart') ||
+              name.endsWith('.sh') ||
+              name.endsWith('.bat') ||
+              name.endsWith('.ps1');
+          
+          if (isText && att.bytes != null) {
+            try {
+              final content = utf8.decode(att.bytes!);
+              buffer.writeln('\n\n[Attached File: ${att.name}]');
+              buffer.writeln('--- CONTENT START ---');
+              buffer.writeln(content);
+              buffer.writeln('--- CONTENT END ---');
+            } catch (_) {}
+          } else if (att.bytes != null && mime.startsWith('image/')) {
+            imagesOnly.add(att);
+          }
+        }
+        processed.add(
+          ChatMessage(
+            id: m.id,
+            role: m.role,
+            content: buffer.toString(),
+            timestamp: m.timestamp,
+            attachments: isMultiModal ? imagesOnly : null,
+          ),
+        );
+      } else {
+        processed.add(m);
+      }
+    }
+    return processed;
+  }
+
   /// Sends a message and triggers the agentic tool call loop.
-  Future<void> sendMessage(String text) async {
-    if (text.trim().isEmpty || _generating) return;
+  Future<void> sendMessage(String text, {List<MessageAttachment>? attachments}) async {
+    if ((text.trim().isEmpty && (attachments == null || attachments.isEmpty)) || _generating) return;
 
     _errorMessage = null;
     _generating = true;
@@ -206,6 +371,7 @@ class PlaygroundController extends ChangeNotifier {
       id: _uuid.v4(),
       content: text,
       role: ChatRole.user,
+      attachments: attachments,
       timestamp: DateTime.now(),
     ));
     notifyListeners();
@@ -213,27 +379,34 @@ class PlaygroundController extends ChangeNotifier {
     try {
       // 2. Build full available tools list (local + active external)
       final List<MCPTool> mcpTools = [];
-      // Add local tools
-      mcpTools.addAll(_localTools.map((t) => t.toMCPTool()));
-      // Add connected external tools
-      mcpTools.addAll(_mcpManager.availableTools);
+      if (!_chatMode) {
+        // Add local tools (filtered by checklist)
+        mcpTools.addAll(_localTools
+            .map((t) => t.toMCPTool())
+            .where((t) => !_disabledToolNames.contains(t.name)));
+        // Add connected external tools (filtered by checklist)
+        mcpTools.addAll(_mcpManager.availableTools
+            .where((t) => !_disabledToolNames.contains(t.name)));
+      }
 
       int steps = 0;
       const maxSteps = 5;
       bool continueLoop = true;
 
       // 3. Execution System Prompt
-      final systemPrompt =
-          'You are an agent equipped with tools. Focus on the user\'s task. '
-          'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
-          'Present final answers directly. Present code and logs inside clean formatting.';
+      final systemPrompt = _systemPrompt.trim().isNotEmpty
+          ? _systemPrompt
+          : 'You are an agent equipped with tools. Focus on the user\'s task. '
+            'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
+            'Present final answers directly. Present code and logs inside clean formatting.';
 
       while (continueLoop && steps < maxSteps) {
         steps++;
         
+        final processedMsgs = await _preprocessMessagesForLlm(_messages, activeLlmConfig.isMultiModal);
         final response = await LLMService.generate(
-          config: _llmConfig,
-          messages: _messages,
+          config: activeLlmConfig,
+          messages: processedMsgs,
           tools: mcpTools,
           systemPrompt: systemPrompt,
         );
@@ -254,9 +427,8 @@ class PlaygroundController extends ChangeNotifier {
           final call = response.toolCalls.first;
 
           // Append tool call to log UI
-          final callMsgId = _uuid.v4();
           _messages.add(ChatMessage(
-            id: callMsgId,
+            id: call.id,
             content: 'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
             role: ChatRole.assistant,
             type: MessageType.toolCall,
@@ -288,12 +460,16 @@ class PlaygroundController extends ChangeNotifier {
             id: call.id, // Align with tool call ID for LLM history reference
             content: responseContentText.isNotEmpty ? responseContentText : 'Executed.',
             role: ChatRole.tool,
-            type: result.content.any((c) => c.type == 'chart') ? MessageType.text : MessageType.toolResponse,
+            type: MessageType.toolResponse,
             toolName: call.name,
             toolResult: result,
             timestamp: DateTime.now(),
           ));
           notifyListeners();
+
+          if (_stopAfterToolCall) {
+            continueLoop = false;
+          }
         }
       }
     } catch (e) {

@@ -11,6 +11,7 @@ typedef McpLogCallback = void Function(String message, {bool isError});
 /// Core client connection class to communicate with MCP servers over HTTP/HTTPS.
 class MCPClient extends ChangeNotifier {
   final String serverUrl;
+  final String mcpEndpoint;
   final String? bearerToken;
   final McpLogCallback? logCallback;
 
@@ -34,7 +35,7 @@ class MCPClient extends ChangeNotifier {
   /// Session ID for stateful Streamable HTTP transport (MCP 2025).
   String? _sessionId;
 
-  MCPClient(this.serverUrl, {this.bearerToken, this.logCallback})
+  MCPClient(this.serverUrl, {this.mcpEndpoint = '/mcp', this.bearerToken, this.logCallback})
       : _effectiveBearerToken = bearerToken;
 
   void _log(String message, {bool isError = false}) {
@@ -52,16 +53,22 @@ class MCPClient extends ChangeNotifier {
 
   Uri _rpcUri() {
     final uri = Uri.parse(_normalizedServerUrl);
-    if (uri.path.toLowerCase().endsWith('/mcp')) return uri;
-    return uri.replace(path: '${uri.path}/mcp');
+    final normalizedEndpoint = mcpEndpoint.startsWith('/') ? mcpEndpoint : '/$mcpEndpoint';
+    final path = uri.path;
+    if (path.toLowerCase().endsWith(normalizedEndpoint.toLowerCase())) return uri;
+    final separator = path.endsWith('/') ? '' : '/';
+    return uri.replace(path: '$path$separator${normalizedEndpoint.startsWith('/') ? normalizedEndpoint.substring(1) : normalizedEndpoint}');
   }
 
   Uri _healthUri() {
     final uri = Uri.parse(_normalizedServerUrl);
-    if (uri.path.toLowerCase().endsWith('/mcp')) {
-      return uri.replace(path: uri.path.replaceFirst(RegExp(r'/mcp$', caseSensitive: false), '/health'));
+    final normalizedEndpoint = mcpEndpoint.startsWith('/') ? mcpEndpoint : '/$mcpEndpoint';
+    final path = uri.path;
+    if (path.toLowerCase().endsWith(normalizedEndpoint.toLowerCase())) {
+      return uri.replace(path: path.replaceFirst(RegExp('${RegExp.escape(normalizedEndpoint)}\$', caseSensitive: false), '/health'));
     }
-    return uri.replace(path: '${uri.path}/health');
+    final separator = path.endsWith('/') ? '' : '/';
+    return uri.replace(path: '$path${separator}health');
   }
 
   Map<String, String> _getHeaders({Map<String, String>? additionalHeaders}) {
@@ -397,6 +404,7 @@ class MCPClientDef {
   });
 
   String get label => displayName ?? name;
+  String get url => client.serverUrl;
   bool get isConnected => client.isConnected;
   List<MCPTool> get availableTools => client.availableTools;
 

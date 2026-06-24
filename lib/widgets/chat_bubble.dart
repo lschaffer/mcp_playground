@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../models.dart';
 
 class ChatBubble extends StatelessWidget {
@@ -21,10 +20,6 @@ class ChatBubble extends StatelessWidget {
     }
 
     if (message.type == MessageType.toolResponse && message.toolResult != null) {
-      final hasChart = message.toolResult!.content.any((c) => c.type == 'chart');
-      if (hasChart) {
-        return _buildChartBubble(context, theme);
-      }
       return _buildToolResponseBubble(context, theme);
     }
 
@@ -48,6 +43,8 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
       child: Row(
@@ -56,23 +53,23 @@ class ChatBubble extends StatelessWidget {
         children: [
           if (!isUser)
             CircleAvatar(
-              backgroundColor: theme.colorScheme.primaryContainer,
+              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.1) : theme.colorScheme.primaryContainer,
               radius: 16,
-              child: Icon(Icons.smart_toy_outlined, size: 18, color: theme.colorScheme.onPrimaryContainer),
+              child: Icon(Icons.smart_toy_outlined, size: 18, color: isDark ? Colors.white : theme.colorScheme.onPrimaryContainer),
             ),
           const SizedBox(width: 8),
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
                 color: isUser
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(14),
-                  topRight: const Radius.circular(14),
-                  bottomLeft: Radius.circular(isUser ? 14 : 0),
-                  bottomRight: Radius.circular(isUser ? 0 : 14),
+                    ? (isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.15) : const Color(0xFF7C3AED).withValues(alpha: 0.08))
+                    : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isUser
+                      ? (isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.35) : const Color(0xFF7C3AED).withValues(alpha: 0.2))
+                      : (isDark ? Colors.white10 : Colors.black12),
                 ),
               ),
               child: Column(
@@ -81,7 +78,7 @@ class ChatBubble extends StatelessWidget {
                   MarkdownBody(
                     data: message.content,
                     styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                      p: TextStyle(color: isUser ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface),
+                      p: TextStyle(color: theme.colorScheme.onSurface),
                       code: const TextStyle(fontFamily: 'monospace', fontSize: 13),
                     ),
                   ),
@@ -92,9 +89,9 @@ class ChatBubble extends StatelessWidget {
           const SizedBox(width: 8),
           if (isUser)
             CircleAvatar(
-              backgroundColor: theme.colorScheme.primary,
+              backgroundColor: isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.3) : theme.colorScheme.primary,
               radius: 16,
-              child: Icon(Icons.person_outline, size: 18, color: theme.colorScheme.onPrimary),
+              child: Icon(Icons.person_outline, size: 18, color: isDark ? Colors.white : theme.colorScheme.onPrimary),
             ),
         ],
       ),
@@ -135,6 +132,7 @@ class ChatBubble extends StatelessWidget {
   }
 
   Widget _buildToolResponseBubble(BuildContext context, ThemeData theme) {
+    final contents = message.toolResult?.content ?? [];
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
       child: ExpansionTile(
@@ -157,12 +155,15 @@ class ChatBubble extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(10),
             color: theme.colorScheme.surfaceContainerLowest,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Text(
-                message.content,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: contents.map((c) {
+                if (c.type == 'image' || c.mimeType?.startsWith('image/') == true) {
+                  return _buildImageContent(context, c.data ?? c.text ?? '', c.mimeType, theme);
+                } else {
+                  return _buildTextContent(context, c.text ?? '', theme);
+                }
+              }).toList(),
             ),
           )
         ],
@@ -170,150 +171,92 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildChartBubble(BuildContext context, ThemeData theme) {
-    final chartContent = message.toolResult!.content.firstWhere((c) => c.type == 'chart');
-    Map<String, dynamic> chartData = {};
+  Widget _buildImageContent(BuildContext context, String base64Data, String? mimeType, ThemeData theme) {
     try {
-      chartData = jsonDecode(chartContent.text ?? '{}') as Map<String, dynamic>;
-    } catch (_) {}
-
-    final title = chartData['title'] as String? ?? 'Data Chart';
-    final chartType = chartData['chart_type'] as String? ?? 'line';
-    final labels = (chartData['labels'] as List?)?.cast<String>() ?? [];
-    final data = (chartData['data'] as List?)?.map((d) => (d as num).toDouble()).toList() ?? [];
-
-    if (labels.isEmpty || data.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 220,
-            child: _renderChart(chartType, labels, data, theme),
+      String cleanBase64 = base64Data.trim();
+      if (cleanBase64.startsWith('data:')) {
+        final commaIndex = cleanBase64.indexOf(',');
+        if (commaIndex != -1) {
+          cleanBase64 = cleanBase64.substring(commaIndex + 1);
+        }
+      }
+      final bytes = base64Decode(cleanBase64);
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        constraints: const BoxConstraints(maxHeight: 400),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: InteractiveViewer(
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.broken_image, size: 32, color: Colors.red),
+                      const SizedBox(height: 8),
+                      const Text('Failed to display image', style: TextStyle(color: Colors.red)),
+                      if (mimeType != null) Text('MIME type: $mimeType', style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    } catch (e) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          'Error decoding image: $e',
+          style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+        ),
+      );
+    }
   }
 
-  Widget _renderChart(String type, List<String> labels, List<double> data, ThemeData theme) {
-    if (type == 'pie') {
-      final List<PieChartSectionData> sections = [];
-      for (int i = 0; i < data.length; i++) {
-        sections.add(PieChartSectionData(
-          color: Colors.primaries[i % Colors.primaries.length],
-          value: data[i],
-          title: '${labels[i]}\n${data[i]}',
-          radius: 60,
-          titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-        ));
-      }
-      return PieChart(PieChartData(sections: sections, centerSpaceRadius: 40));
-    }
-
-    if (type == 'bar') {
-      final List<BarChartGroupData> groups = [];
-      for (int i = 0; i < data.length; i++) {
-        groups.add(BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: data[i],
-              color: theme.colorScheme.primary,
-              width: 16,
-              borderRadius: BorderRadius.circular(4),
-            )
-          ],
-        ));
-      }
-
-      return BarChart(
-        BarChartData(
-          barGroups: groups,
-          gridData: const FlGridData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (val, meta) {
-                  final idx = val.toInt();
-                  if (idx >= 0 && idx < labels.length) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 6.0),
-                      child: Text(labels[idx], style: const TextStyle(fontSize: 10)),
-                    );
-                  }
-                  return const Text('');
-                },
-              ),
-            ),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+  Widget _buildTextContent(BuildContext context, String text, ThemeData theme) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    // Check if it's formatted JSON or code
+    final isJson = (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
+    if (isJson) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(8),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SelectableText(
+            text,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
           ),
         ),
       );
     }
 
-    // Default: Line chart
-    final List<FlSpot> spots = [];
-    for (int i = 0; i < data.length; i++) {
-      spots.add(FlSpot(i.toDouble(), data[i]));
-    }
-
-    return LineChart(
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            color: theme.colorScheme.primary,
-            barWidth: 3,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: theme.colorScheme.primary.withValues(alpha: 0.15),
-            ),
-          )
-        ],
-        gridData: const FlGridData(show: false),
-        titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (val, meta) {
-                final idx = val.toInt();
-                if (idx >= 0 && idx < labels.length) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6.0),
-                    child: Text(labels[idx], style: const TextStyle(fontSize: 10)),
-                  );
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: MarkdownBody(
+        data: text,
+        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+          p: TextStyle(color: theme.colorScheme.onSurface),
+          code: const TextStyle(fontFamily: 'monospace', fontSize: 12),
         ),
       ),
     );
