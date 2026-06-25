@@ -54,7 +54,9 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = jsonDecode(raw) as List;
-      return list.map((item) => McpServerConfig.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .map((item) => McpServerConfig.fromJson(item as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
@@ -74,7 +76,12 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = jsonDecode(raw) as List;
-      return list.map((item) => SavedPlaygroundSetup.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .map(
+            (item) =>
+                SavedPlaygroundSetup.fromJson(item as Map<String, dynamic>),
+          )
+          .toList();
     } catch (_) {
       return [];
     }
@@ -93,7 +100,29 @@ class PlaygroundController extends ChangeNotifier {
   String? _errorMessage;
   bool _stopAfterToolCall = false;
   final Set<String> _disabledToolNames = {};
-  
+
+  // ── Tool loop interception ──────────────────────────────────────
+  /// Maximum number of tool call iterations per user request.
+  static const int _maxToolIterations = 10;
+
+  /// Counts tool call iterations in the current request.
+  int _toolIterationCount = 0;
+
+  /// When true, the next LLM call must NOT receive any tool definitions
+  /// so the model is forced to produce a final text answer.
+  bool _forceNoToolCallsNextTurn = false;
+
+  /// Hint message injected alongside the forced no-tools turn.
+  String? _forcedNoToolHintNextTurn;
+
+  /// Tracks already-executed tool call signatures (`name|jsonArgs`) to
+  /// detect repeated calls (especially from small models).
+  final Set<String> _executedToolCallSignatures = {};
+
+  /// Tracks already-executed tool call IDs.
+  final Set<String> _executedToolCallIds = {};
+  // ────────────────────────────────────────────────────────────────
+
   String _systemPrompt = '';
   bool _chatMode = false;
   LlmConfig? _customLlmConfig;
@@ -102,50 +131,23 @@ class PlaygroundController extends ChangeNotifier {
   final MultiMCPManager _mcpManager = MultiMCPManager();
   final Uuid _uuid = const Uuid();
 
-  final Map<String, dynamic> _mcpInitParams = {};
-
   PlaygroundController({
     LlmConfig? initialLlmConfig,
     List<McpServerConfig>? initialServers,
     List<McpLocalTool>? customLocalTools,
     McpPlaygroundStorageDelegate? storageDelegate,
-  })  : _llmConfig = initialLlmConfig ??
-            const LlmConfig(
-              provider: LlmProvider.none,
-              model: '',
-              apiKey: '',
-            ),
-        _storage = storageDelegate ?? SharedPreferencesStorageDelegate() {
+  }) : _llmConfig =
+           initialLlmConfig ??
+           const LlmConfig(provider: LlmProvider.none, model: '', apiKey: ''),
+       _storage = storageDelegate ?? SharedPreferencesStorageDelegate() {
     if (initialServers != null) {
       _servers.addAll(initialServers);
     }
-    // Register built-in local tools
-    _localTools.addAll([
-      GetCurrentWeatherTool(),
-      GetHourlyForecastTool(),
-      GetDailyForecastTool(),
-      GeocodeWeatherCityTool(),
-      SshListDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshReadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshDownloadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshUploadFileTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshExecuteCommandTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshMakeDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      SshRemoveDirectoryTool(() => _mcpInitParams['ssh'] as Map<String, dynamic>?),
-      CreateChartPngTool(),
-    ]);
+    // Register custom local tools (if any) passed via constructor
     if (customLocalTools != null) {
       _localTools.addAll(customLocalTools);
     }
     _initAndLoad();
-  }
-
-  Map<String, dynamic> get mcpInitParams => _mcpInitParams;
-
-  void updateMcpInitParams(Map<String, dynamic> params) {
-    _mcpInitParams.clear();
-    _mcpInitParams.addAll(params);
-    notifyListeners();
   }
 
   // --- Getters ---
@@ -283,7 +285,9 @@ class PlaygroundController extends ChangeNotifier {
 
   Future<void> _syncMcpServers() async {
     await _mcpManager.disconnectAll();
-    final activeServers = _servers.where((s) => s.enabled && s.url.trim().isNotEmpty).toList();
+    final activeServers = _servers
+        .where((s) => s.enabled && s.url.trim().isNotEmpty)
+        .toList();
 
     // Re-register external servers
     for (final s in activeServers) {
@@ -292,7 +296,8 @@ class PlaygroundController extends ChangeNotifier {
         mcpEndpoint: s.mcpEndpoint,
         bearerToken: s.apiKey,
         apiPassword: s.apiPassword,
-        logCallback: (msg, {bool isError = false}) => debugPrint('[Playground MCP Log: ${s.name}] $msg'),
+        logCallback: (msg, {bool isError = false}) =>
+            debugPrint('[Playground MCP Log: ${s.name}] $msg'),
       );
       _mcpManager.registerClient(
         MCPClientDef(name: s.id, client: client, displayName: s.name),
@@ -309,16 +314,22 @@ class PlaygroundController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<ChatMessage>> _preprocessMessagesForLlm(List<ChatMessage> messages, bool isMultiModal) async {
+  Future<List<ChatMessage>> _preprocessMessagesForLlm(
+    List<ChatMessage> messages,
+    bool isMultiModal,
+  ) async {
     final List<ChatMessage> processed = [];
     for (final m in messages) {
-      if (m.role == ChatRole.user && m.attachments != null && m.attachments!.isNotEmpty) {
+      if (m.role == ChatRole.user &&
+          m.attachments != null &&
+          m.attachments!.isNotEmpty) {
         final buffer = StringBuffer(m.content);
         final imagesOnly = <MessageAttachment>[];
         for (final att in m.attachments!) {
           final mime = att.mimeType.toLowerCase();
           final name = att.name.toLowerCase();
-          final isText = mime.startsWith('text/') ||
+          final isText =
+              mime.startsWith('text/') ||
               name.endsWith('.txt') ||
               name.endsWith('.md') ||
               name.endsWith('.csv') ||
@@ -333,7 +344,7 @@ class PlaygroundController extends ChangeNotifier {
               name.endsWith('.sh') ||
               name.endsWith('.bat') ||
               name.endsWith('.ps1');
-          
+
           if (isText && att.bytes != null) {
             try {
               final content = utf8.decode(att.bytes!);
@@ -363,35 +374,37 @@ class PlaygroundController extends ChangeNotifier {
   }
 
   /// Sends a message and triggers the agentic tool call loop.
-  Future<void> sendMessage(String text, {List<MessageAttachment>? attachments}) async {
-    if ((text.trim().isEmpty && (attachments == null || attachments.isEmpty)) || _generating) return;
+  Future<void> sendMessage(
+    String text, {
+    List<MessageAttachment>? attachments,
+  }) async {
+    if ((text.trim().isEmpty && (attachments == null || attachments.isEmpty)) ||
+        _generating)
+      return;
+
+    // ── Reset tool loop tracking for this new user request ──────────
+    _toolIterationCount = 0;
+    _forceNoToolCallsNextTurn = false;
+    _forcedNoToolHintNextTurn = null;
+    _executedToolCallSignatures.clear();
+    _executedToolCallIds.clear();
 
     _errorMessage = null;
     _generating = true;
-    
+
     // 1. Add User Message
-    _messages.add(ChatMessage(
-      id: _uuid.v4(),
-      content: text,
-      role: ChatRole.user,
-      attachments: attachments,
-      timestamp: DateTime.now(),
-    ));
+    _messages.add(
+      ChatMessage(
+        id: _uuid.v4(),
+        content: text,
+        role: ChatRole.user,
+        attachments: attachments,
+        timestamp: DateTime.now(),
+      ),
+    );
     notifyListeners();
 
     try {
-      // 2. Build full available tools list (local + active external)
-      final List<MCPTool> mcpTools = [];
-      if (!_chatMode) {
-        // Add local tools (filtered by checklist)
-        mcpTools.addAll(_localTools
-            .map((t) => t.toMCPTool())
-            .where((t) => !_disabledToolNames.contains(t.name)));
-        // Add connected external tools (filtered by checklist)
-        mcpTools.addAll(_mcpManager.availableTools
-            .where((t) => !_disabledToolNames.contains(t.name)));
-      }
-
       int steps = 0;
       const maxSteps = 5;
       bool continueLoop = true;
@@ -400,16 +413,65 @@ class PlaygroundController extends ChangeNotifier {
       final systemPrompt = _systemPrompt.trim().isNotEmpty
           ? _systemPrompt
           : 'You are an agent equipped with tools. Focus on the user\'s task. '
-            'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
-            'Present final answers directly. Present code and logs inside clean formatting.';
+                'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
+                'Present final answers directly. Present code and logs inside clean formatting.';
 
       while (continueLoop && steps < maxSteps) {
         steps++;
-        
-        final processedMsgs = await _preprocessMessagesForLlm(_messages, activeLlmConfig.isMultiModal);
+
+        // ── Check iteration limit to prevent infinite loops ─────────
+        if (_toolIterationCount > _maxToolIterations) {
+          _messages.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              content:
+                  'Maximum tool iteration limit ($_maxToolIterations) reached. '
+                  'Please refine your request or ask for help.',
+              role: ChatRole.assistant,
+              timestamp: DateTime.now(),
+            ),
+          );
+          notifyListeners();
+          break;
+        }
+
+        // 2. Build tools list (may be suppressed on forced-final turn)
+        final List<MCPTool> mcpTools = [];
+        if (!_chatMode && !_forceNoToolCallsNextTurn) {
+          mcpTools.addAll(
+            _localTools
+                .map((t) => t.toMCPTool())
+                .where((t) => !_disabledToolNames.contains(t.name)),
+          );
+          mcpTools.addAll(
+            _mcpManager.availableTools.where(
+              (t) => !_disabledToolNames.contains(t.name),
+            ),
+          );
+        }
+
+        // If forced final turn, inject the hint as a user message
+        // so the model switches to text-only synthesis.
+        final List<ChatMessage> requestMsgs = await _preprocessMessagesForLlm(
+          _messages,
+          activeLlmConfig.isMultiModal,
+        );
+        if (_forceNoToolCallsNextTurn && _forcedNoToolHintNextTurn != null) {
+          requestMsgs.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              content: _forcedNoToolHintNextTurn!,
+              role: ChatRole.user,
+              timestamp: DateTime.now(),
+            ),
+          );
+          _forceNoToolCallsNextTurn = false;
+          _forcedNoToolHintNextTurn = null;
+        }
+
         final response = await LLMService.generate(
           config: activeLlmConfig,
-          messages: processedMsgs,
+          messages: requestMsgs,
           tools: mcpTools,
           systemPrompt: systemPrompt,
         );
@@ -417,33 +479,98 @@ class PlaygroundController extends ChangeNotifier {
         if (response.toolCalls.isEmpty) {
           // No more tool calls: append assistant text and end loop
           if (response.text.isNotEmpty) {
-            _messages.add(ChatMessage(
-              id: _uuid.v4(),
-              content: response.text,
-              role: ChatRole.assistant,
-              timestamp: DateTime.now(),
-            ));
+            _messages.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                content: response.text,
+                role: ChatRole.assistant,
+                timestamp: DateTime.now(),
+              ),
+            );
           }
           continueLoop = false;
         } else {
           // LLM requested tool execution
           final call = response.toolCalls.first;
 
+          // ── Duplicate tool call detection ─────────────────────────
+          _toolIterationCount++;
+          final toolSignature = '${call.name}|${jsonEncode(call.arguments)}';
+          final hasDuplicateId = _executedToolCallIds.contains(call.id);
+          final hasDuplicateSignature = _executedToolCallSignatures.contains(
+            toolSignature,
+          );
+
+          if (hasDuplicateId || hasDuplicateSignature) {
+            // Intercept repeated tool call — force the model to finalise.
+            final previousResult = _messages
+                .lastWhere(
+                  (m) => m.role == ChatRole.tool && m.toolName == call.name,
+                  orElse: () => ChatMessage(
+                    id: '',
+                    content: '',
+                    role: ChatRole.tool,
+                    timestamp: DateTime.now(),
+                  ),
+                )
+                .content;
+
+            final loopCorrectionText =
+                'The tool "${call.name}" was already successfully executed. '
+                'Previous result: $previousResult\n\n'
+                'Do NOT call this tool again. Generate the final response using this result.';
+
+            _messages.add(
+              ChatMessage(
+                id: call.id,
+                content: loopCorrectionText,
+                role: ChatRole.tool,
+                type: MessageType.toolResponse,
+                toolName: call.name,
+                toolResult: MCPToolResult(
+                  content: [MCPContent(type: 'text', text: loopCorrectionText)],
+                  isError: false,
+                ),
+                timestamp: DateTime.now(),
+              ),
+            );
+            notifyListeners();
+
+            // Force the next LLM turn to have no tools — the model must
+            // produce a text-only final answer.
+            _forceNoToolCallsNextTurn = true;
+            _forcedNoToolHintNextTurn =
+                'The tool "${call.name}" has already been successfully executed with these parameters. '
+                'Do NOT call this tool or any other tool again. Use the tool results in the history to write your final response now.';
+
+            continueLoop = false;
+            continue; // Exit the while loop; the forced turn will re-enter
+          }
+
+          // Record this tool call to prevent future duplicates
+          _executedToolCallIds.add(call.id);
+          _executedToolCallSignatures.add(toolSignature);
+
           // Append tool call to log UI
-          _messages.add(ChatMessage(
-            id: call.id,
-            content: 'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
-            role: ChatRole.assistant,
-            type: MessageType.toolCall,
-            toolName: call.name,
-            toolArguments: call.arguments,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(
+            ChatMessage(
+              id: call.id,
+              content:
+                  'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
+              role: ChatRole.assistant,
+              type: MessageType.toolCall,
+              toolName: call.name,
+              toolArguments: call.arguments,
+              timestamp: DateTime.now(),
+            ),
+          );
           notifyListeners();
 
           // Execute tool
           MCPToolResult result;
-          final localMatch = _localTools.where((t) => t.name == call.name).toList();
+          final localMatch = _localTools
+              .where((t) => t.name == call.name)
+              .toList();
 
           if (localMatch.isNotEmpty) {
             // Run Dart-native tool
@@ -459,15 +586,19 @@ class PlaygroundController extends ChangeNotifier {
               .map((c) => c.text ?? '')
               .join('\n');
 
-          _messages.add(ChatMessage(
-            id: call.id, // Align with tool call ID for LLM history reference
-            content: responseContentText.isNotEmpty ? responseContentText : 'Executed.',
-            role: ChatRole.tool,
-            type: MessageType.toolResponse,
-            toolName: call.name,
-            toolResult: result,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(
+            ChatMessage(
+              id: call.id, // Align with tool call ID for LLM history reference
+              content: responseContentText.isNotEmpty
+                  ? responseContentText
+                  : 'Executed.',
+              role: ChatRole.tool,
+              type: MessageType.toolResponse,
+              toolName: call.name,
+              toolResult: result,
+              timestamp: DateTime.now(),
+            ),
+          );
           notifyListeners();
 
           if (_stopAfterToolCall) {
@@ -477,13 +608,15 @@ class PlaygroundController extends ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'Execution error: $e';
-      _messages.add(ChatMessage(
-        id: _uuid.v4(),
-        content: 'Error: $e',
-        role: ChatRole.system,
-        type: MessageType.log,
-        timestamp: DateTime.now(),
-      ));
+      _messages.add(
+        ChatMessage(
+          id: _uuid.v4(),
+          content: 'Error: $e',
+          role: ChatRole.system,
+          type: MessageType.log,
+          timestamp: DateTime.now(),
+        ),
+      );
     } finally {
       _generating = false;
       notifyListeners();
