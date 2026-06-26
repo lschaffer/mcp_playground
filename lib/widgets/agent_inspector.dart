@@ -305,13 +305,16 @@ class _AgentInspectorState extends State<AgentInspector> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    'Price/1M: \$${price.inputPer1MUsd.toStringAsFixed(2)} in / \$${price.outputPer1MUsd.toStringAsFixed(2)} out',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                                      fontSize: 11,
+                                  Expanded(
+                                    child: Text(
+                                      'Price/1M: \$${price.inputPer1MUsd.toStringAsFixed(2)} in / \$${price.outputPer1MUsd.toStringAsFixed(2)} out',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                        fontSize: 11,
+                                      ),
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Text(
                                     'Est. Cost: \$${estCost.toStringAsFixed(5)}',
                                     style: theme.textTheme.bodySmall?.copyWith(

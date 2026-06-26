@@ -226,7 +226,6 @@ When running on **Flutter Web**, the browser's [same-origin policy](https://deve
 
 - **Desktop and Native MCP Server registration** — Register and spawn **Node.js** and **Python** MCP servers as subprocesses on desktop platforms (macOS, Windows, Linux) using `dart:io`. This will enable local, non-HTTP MCP servers (stdio transport) to work seamlessly alongside HTTP remote servers.
 - **Improved Agent Inspector** — Enhanced debugging with execution traces, token usage breakdowns, and step-by-step replay.
-- **Prompt templates** — Built-in library of reusable system prompt templates.
 - **Plugin ecosystem** — Allow third-party tool packages to be discovered and registered at build time.
 - **Streaming responses** — Real-time streaming LLM output in the chat UI.
 

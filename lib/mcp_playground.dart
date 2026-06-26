@@ -102,6 +102,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
   final _customModelCtrl = TextEditingController();
   final _customApiKeyCtrl = TextEditingController();
   final _customBaseUrlCtrl = TextEditingController();
+
+  // Per-provider field cache for the custom LLM override
+  final Map<LlmProvider, _CustomProviderCache> _customProviderCache = {};
   final _customTempCtrl = TextEditingController(text: '0.2');
   final _customMaxTokensCtrl = TextEditingController(text: '0');
   final _customMaxToolOutputSizeCtrl = TextEditingController(text: '2560000');
@@ -259,8 +262,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
   }
 
   bool _isToolsetEnabled(_ToolsetGroup group) {
-    final disabled = _controller.disabledToolNames;
-    return group.tools.any((t) => !disabled.contains(t.name));
+    final enabled = _controller.enabledToolNames;
+    return group.tools.any((t) => enabled.contains(t.name));
   }
 
   void _showToolChecklistDialog() {
@@ -444,15 +447,15 @@ class _McpPlaygroundState extends State<McpPlayground> {
                         itemCount: groups.length,
                         itemBuilder: (context, gIdx) {
                           final group = groups[gIdx];
-                          final disabled = _controller.disabledToolNames;
+                          final enabled = _controller.enabledToolNames;
                           final groupTools = group.tools;
 
                           // Check if all tools in group are enabled
                           final allEnabled = groupTools.every(
-                            (t) => !disabled.contains(t.name),
+                            (t) => enabled.contains(t.name),
                           );
                           final noneEnabled = groupTools.every(
-                            (t) => disabled.contains(t.name),
+                            (t) => !enabled.contains(t.name),
                           );
 
                           bool? triStateVal;
@@ -507,7 +510,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                               ),
                               // Tools in this group
                               ...groupTools.map((t) {
-                                final isEnabled = !disabled.contains(t.name);
+                                final isEnabled = enabled.contains(t.name);
                                 return CheckboxListTile(
                                   value: isEnabled,
                                   activeColor: const Color(0xFF00ACC1),
@@ -558,7 +561,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final disabled = _controller.disabledToolNames;
+            final enabled = _controller.enabledToolNames;
             return AlertDialog(
               title: Text(
                 'Select tools from ${group.name}',
@@ -573,7 +576,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                 child: ListView(
                   shrinkWrap: true,
                   children: group.tools.map((t) {
-                    final isEnabled = !disabled.contains(t.name);
+                    final isEnabled = enabled.contains(t.name);
                     return CheckboxListTile(
                       value: isEnabled,
                       title: Text(
@@ -610,60 +613,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
-  void _handleExampleAction(String action) {
-    // Reset/clear current conversation and switch view back to the initial setup screen
-    _resetPlayground();
-
-    // Clear all other text inputs
-    _inputCtrl.clear();
-    _systemPromptCtrl.clear();
-
-    // Disable all tools first
-    final allTools = _getToolsetGroups()
-        .expand((g) => g.tools)
-        .map((t) => t.name)
-        .toList();
-    for (final tool in allTools) {
-      _controller.toggleToolEnabled(tool, false);
-    }
-
-    String textToInsert = '';
-    List<String> toolsToEnable = [];
-
-    if (action == 'weather') {
-      textToInsert =
-          'Check the weather in Paris, London, and Tokyo, and compile a report.';
-      toolsToEnable = [
-        'get_current_weather',
-        'get_hourly_forecast',
-        'get_daily_forecast',
-        'geocode_weather_city',
-      ];
-    } else if (action == 'chart') {
-      textToInsert =
-          'Generate a bar chart with the following data: Python: 45, JavaScript: 35, Dart: 25, Go: 15.';
-      toolsToEnable = ['create_chart_png'];
-    }
-
-    // Enable target tools
-    for (final tool in toolsToEnable) {
-      _controller.toggleToolEnabled(tool, true);
-    }
-
-    // Populate initial prompt
-    _initialPromptCtrl.text = textToInsert;
-
-    setState(() {});
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Loaded "$action" template. Tools selected & setup cleared.',
-        ),
-      ),
-    );
-  }
-
   // Reset function
   void _resetPlayground() {
     setState(() {
@@ -686,7 +635,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       }
     }
     final nameCtrl = TextEditingController(
-      text: loadedSetup?.name ?? 'My Playground Setup',
+      text: loadedSetup?.name ?? '',
     );
     bool saveAsNew = _loadedSetupId == null;
 
@@ -703,6 +652,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   controller: nameCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Configuration Name',
+                    hintText: 'e.g. My Playground Setup',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -733,13 +683,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   if (name.isEmpty) return;
 
                   final id = saveAsNew ? const Uuid().v4() : _loadedSetupId!;
-                  final disabled = _controller.disabledToolNames;
+                  final enabled = _controller.enabledToolNames;
                   final allTools = _getToolsetGroups()
                       .expand((g) => g.tools)
                       .map((t) => t.name)
                       .toList();
                   final enabledTools = allTools
-                      .where((t) => !disabled.contains(t))
+                      .where((t) => enabled.contains(t))
                       .toList();
 
                   final setup = SavedPlaygroundSetup(
@@ -939,14 +889,35 @@ class _McpPlaygroundState extends State<McpPlayground> {
     });
   }
 
-  void _startPlayground() {
-    // 1. Configure controller properties
-    _controller.systemPrompt = _systemPromptCtrl.text;
-    _controller.chatMode = _chatMode;
-    _controller.stopAfterToolCall = _stopAfterToolCall;
+  void _showSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final screenWidth = MediaQuery.of(ctx).size.width;
+        final isMobile = screenWidth < 600;
+        if (isMobile) {
+          return Dialog.fullscreen(
+            child: SettingsPanel(controller: _controller),
+          );
+        }
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: screenWidth * 0.8,
+              minWidth: 400,
+            ),
+            child: SettingsPanel(controller: _controller),
+          ),
+        );
+      },
+    );
+  }
 
+  void _startPlayground() {
+    // 1. Check if LLM is configured
+    LlmConfig? nextCustom;
     if (_useCustomLlm) {
-      _controller.customLlmConfig = LlmConfig(
+      nextCustom = LlmConfig(
         provider: _customProvider,
         model: _customModelCtrl.text.trim(),
         apiKey: _customApiKeyCtrl.text.trim(),
@@ -967,9 +938,24 @@ class _McpPlaygroundState extends State<McpPlayground> {
         isMultiModal: _customIsMultiModal,
         useNativeToolCall: _customUseNativeTool,
       );
-    } else {
-      _controller.customLlmConfig = null;
     }
+
+    final tempActiveConfig = nextCustom ?? _controller.llmConfig;
+    if (!tempActiveConfig.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please configure the LLM settings first.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _showSettingsDialog();
+      return;
+    }
+
+    _controller.systemPrompt = _systemPromptCtrl.text;
+    _controller.chatMode = _chatMode;
+    _controller.stopAfterToolCall = _stopAfterToolCall;
+    _controller.customLlmConfig = nextCustom;
 
     setState(() {
       _playgroundStarted = true;
@@ -993,30 +979,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
         spacing: 16,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Welcome / Try info banner
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.15),
-              ),
-            ),
-            child: Row(
-              spacing: 12,
-              children: [
-                Icon(Icons.info_outline, color: theme.colorScheme.primary),
-                const Expanded(
-                  child: Text(
-                    'Try out prompts, tools, and system instructions here before scheduling an agent.',
-                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           // Tool Selector section
           Card(
             child: Padding(
@@ -1202,8 +1164,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   spacing: 12,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         const Text(
                           'Custom LLM Config',
@@ -1222,6 +1187,24 @@ class _McpPlaygroundState extends State<McpPlayground> {
                     LlmConfigForm(
                       provider: _customProvider,
                       onProviderChanged: (val) {
+                        // Save current provider's fields before switching
+                        _customProviderCache[_customProvider] =
+                            _CustomProviderCache(
+                              model: _customModelCtrl.text,
+                              apiKey: _customApiKeyCtrl.text,
+                              baseUrl: _customBaseUrlCtrl.text,
+                            );
+                        // Restore or clear fields for the new provider
+                        final cached = _customProviderCache[val];
+                        if (cached != null) {
+                          _customModelCtrl.text = cached.model;
+                          _customApiKeyCtrl.text = cached.apiKey;
+                          _customBaseUrlCtrl.text = cached.baseUrl;
+                        } else {
+                          _customModelCtrl.clear();
+                          _customApiKeyCtrl.clear();
+                          _customBaseUrlCtrl.clear();
+                        }
                         setState(() {
                           _customProvider = val;
                         });
@@ -1300,6 +1283,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
               ),
             ),
           ),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -1310,7 +1294,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
     final groups = _getToolsetGroups();
     final enabledToolsCount = groups
         .expand((g) => g.tools)
-        .where((t) => !_controller.disabledToolNames.contains(t.name))
+        .where((t) => _controller.enabledToolNames.contains(t.name))
         .length;
 
     return Column(
@@ -1318,8 +1302,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
         // Top Bar
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               ActionChip(
                 avatar: const Icon(Icons.edit_note, size: 16),
@@ -1538,11 +1525,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   IconButton(
                     icon: Icon(
                       Icons.send_rounded,
-                      color: showButton && _controller.llmConfig.isConfigured
+                      color: showButton && _controller.activeLlmConfig.isConfigured
                           ? theme.colorScheme.primary
                           : Colors.grey,
                     ),
-                    onPressed: showButton && _controller.llmConfig.isConfigured
+                    onPressed: showButton && _controller.activeLlmConfig.isConfigured
                         ? _handleSend
                         : null,
                   ),
@@ -1609,6 +1596,26 @@ class _McpPlaygroundState extends State<McpPlayground> {
   }
 
   void _showAgentInspectorDialog() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    if (isMobile) {
+      showDialog(
+        context: context,
+        builder: (ctx) => Dialog.fullscreen(
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('Agent Inspector'),
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+            body: AgentInspector(controller: _controller),
+          ),
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1636,10 +1643,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
   void _showSelectedToolsDialog() {
     final groups = _getToolsetGroups();
-    final disabled = _controller.disabledToolNames;
+    final enabled = _controller.enabledToolNames;
     final enabledTools = groups
         .expand((g) => g.tools)
-        .where((t) => !disabled.contains(t.name))
+        .where((t) => enabled.contains(t.name))
         .toList();
 
     showDialog(
@@ -1692,39 +1699,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
   List<Widget> _buildAppBarActions(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 600;
 
-    final examplesButton = PopupMenuButton<String>(
-      icon: const Icon(Icons.lightbulb_outline),
-      tooltip: 'Load Prompt Templates / Examples',
-      onSelected: _handleExampleAction,
-      itemBuilder: (ctx) => const [
-        PopupMenuItem(
-          value: 'weather',
-          child: Row(
-            children: [
-              Icon(Icons.cloud_outlined, size: 18),
-              SizedBox(width: 8),
-              Text('Template: Weather Report'),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'chart',
-          child: Row(
-            children: [
-              Icon(Icons.bar_chart_outlined, size: 18),
-              SizedBox(width: 8),
-              Text('Template: Generate Chart'),
-            ],
-          ),
-        ),
-      ],
-    );
-
     if (isWide) {
       final showInspectorButton =
           _playgroundStarted && MediaQuery.sizeOf(context).width < 900;
       return [
-        examplesButton,
         IconButton(
           icon: const Icon(Icons.restart_alt),
           tooltip: 'Reset Conversation & Setup',
@@ -1762,7 +1740,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     // Mobile / Narrow: Pinned buttons + Overflow
     return [
-      examplesButton,
       IconButton(
         icon: const Icon(Icons.restart_alt),
         tooltip: 'Reset Conversation & Setup',
@@ -1892,15 +1869,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
               title: const Text('Playground Settings'),
               onTap: () {
                 Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  builder: (ctx) => Dialog(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 400),
-                      child: SettingsPanel(controller: _controller),
-                    ),
-                  ),
-                );
+                _showSettingsDialog();
               },
             ),
           ],
@@ -1975,5 +1944,19 @@ class _ToolsetGroup {
     required this.tools,
     this.isExternal = false,
     this.isInstalled = false,
+  });
+}
+
+/// Holds per-provider model/apiKey/baseUrl for the custom LLM override,
+/// so switching providers preserves previously entered data.
+class _CustomProviderCache {
+  final String model;
+  final String apiKey;
+  final String baseUrl;
+
+  const _CustomProviderCache({
+    required this.model,
+    required this.apiKey,
+    required this.baseUrl,
   });
 }

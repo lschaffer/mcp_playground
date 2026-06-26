@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:googleai_dart/googleai_dart.dart' as gemini;
 import 'package:openai_dart/openai_dart.dart' as openai;
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
@@ -708,11 +709,21 @@ class _MistralPatchClient extends http.BaseClient {
         final decoded = jsonDecode(request.body);
         if (decoded is Map<String, dynamic>) {
           final patchedPayload = _sanitizeMistralChatRequest(decoded);
+          final cleanHeaders = Map<String, String>.from(request.headers);
+          cleanHeaders.removeWhere((key, _) =>
+              key.toLowerCase() == 'content-length' ||
+              (kIsWeb && key.toLowerCase() == 'user-agent'));
           requestToSend = http.Request(request.method, request.url)
-            ..headers.addAll(request.headers)
+            ..headers.addAll(cleanHeaders)
             ..body = jsonEncode(patchedPayload);
         }
       } catch (_) {}
+    } else {
+      if (kIsWeb) {
+        try {
+          requestToSend.headers.removeWhere((key, _) => key.toLowerCase() == 'user-agent');
+        } catch (_) {}
+      }
     }
 
     final streamed = await _inner.send(requestToSend);

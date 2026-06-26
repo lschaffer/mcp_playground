@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../playground_controller.dart';
@@ -6,6 +8,7 @@ import '../mcp_client.dart';
 import 'remote_mcp_dialog.dart';
 import 'edit_mcp_dialog.dart';
 import 'llm_config_form.dart';
+import 'mcp_server_registry_tab.dart';
 
 class SettingsDrawer extends StatelessWidget {
   final PlaygroundController controller;
@@ -33,6 +36,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
   final _modelCtrl = TextEditingController();
   final _apiKeyCtrl = TextEditingController();
   final _baseUrlCtrl = TextEditingController();
+
+  // Per-provider field cache — preserves model/apiKey/baseUrl when switching providers
+  final Map<LlmProvider, _ProviderFieldCache> _providerCache = {};
   final _tempCtrl = TextEditingController(text: '0.2');
   final _maxTokensCtrl = TextEditingController(text: '0');
   final _maxToolOutputSizeCtrl = TextEditingController(text: '2560000');
@@ -96,7 +102,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
     if (_maxToolOutputSizeCtrl.text != config.maxToolOutputSize.toString()) {
       _maxToolOutputSizeCtrl.text = config.maxToolOutputSize.toString();
     }
-    if (_tokenWarningThresholdCtrl.text != config.tokenWarningThreshold.toString()) {
+    if (_tokenWarningThresholdCtrl.text !=
+        config.tokenWarningThreshold.toString()) {
       _tokenWarningThresholdCtrl.text = config.tokenWarningThreshold.toString();
     }
     if (_topKCtrl.text != (config.topK?.toString() ?? '')) {
@@ -141,8 +148,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
     final tempVal = double.tryParse(_tempCtrl.text.trim()) ?? 0.2;
     final maxTokensVal = int.tryParse(_maxTokensCtrl.text.trim()) ?? 0;
-    final maxToolSizeVal = int.tryParse(_maxToolOutputSizeCtrl.text.trim()) ?? 2560000;
-    final tokenWarningVal = int.tryParse(_tokenWarningThresholdCtrl.text.trim()) ?? 1500000;
+    final maxToolSizeVal =
+        int.tryParse(_maxToolOutputSizeCtrl.text.trim()) ?? 2560000;
+    final tokenWarningVal =
+        int.tryParse(_tokenWarningThresholdCtrl.text.trim()) ?? 1500000;
 
     final updated = LlmConfig(
       provider: _selectedProvider,
@@ -189,6 +198,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
       final toolsCount = tempClient.availableTools.length;
       tempClient.dispose();
 
+      // Update online status in controller
+      await widget.controller.updateServer(server.copyWith(isOnline: true));
+
       if (!mounted) return;
       Navigator.pop(context); // close loading spinner
       ScaffoldMessenger.of(context).showSnackBar(
@@ -200,6 +212,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ),
       );
     } catch (e) {
+      // Update online status to false in controller
+      await widget.controller.updateServer(server.copyWith(isOnline: false));
+
       if (!mounted) return;
       Navigator.pop(context); // close loading spinner
       ScaffoldMessenger.of(context).showSnackBar(
@@ -328,246 +343,302 @@ class _SettingsPanelState extends State<SettingsPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.settings_outlined),
-                const SizedBox(width: 8),
-                Text('Playground Settings', style: theme.textTheme.titleMedium),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: Form(
-              key: _formKey,
-              child: ListView(
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    return DefaultTabController(
+      length: isDesktop ? 3 : 2,
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
                 padding: const EdgeInsets.all(16.0),
-                children: [
-                  Column(
-                    spacing: 12,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // --- Section 1: LLM Settings ---
-                      Text(
-                        'LLM / SLM PROVIDER',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.settings_outlined),
+                    const SizedBox(width: 8),
+                    Text('Playground Settings', style: theme.textTheme.titleMedium),
+                    const Spacer(),
+                    if (Navigator.of(context).canPop())
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
-                      LlmConfigForm(
-                        provider: _selectedProvider,
-                        onProviderChanged: (val) {
-                          setState(() {
-                            _selectedProvider = val;
-                          });
-                        },
-                        modelCtrl: _modelCtrl,
-                        apiKeyCtrl: _apiKeyCtrl,
-                        baseUrlCtrl: _baseUrlCtrl,
-                      ),
-                      if (_selectedProvider != LlmProvider.none) ...[
-                        const SizedBox(height: 12),
-                        ExpansionTile(
-                          title: const Text(
-                            'Advanced Hyperparameters & Flags',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          tilePadding: EdgeInsets.zero,
-                          children: [
-                            LlmAdvancedSettingsForm(
-                              tempCtrl: _tempCtrl,
-                              maxTokensCtrl: _maxTokensCtrl,
-                              maxToolOutputSizeCtrl: _maxToolOutputSizeCtrl,
-                              tokenWarningThresholdCtrl: _tokenWarningThresholdCtrl,
-                              topKCtrl: _topKCtrl,
-                              topPCtrl: _topPCtrl,
-                              repeatPenaltyCtrl: _repeatPenaltyCtrl,
-                              seedCtrl: _seedCtrl,
-                              thinking: _thinking,
-                              onThinkingChanged: (val) => setState(() => _thinking = val),
-                              isSlm: _isSlm,
-                              onIsSlmChanged: (val) => setState(() => _isSlm = val),
-                              isMultiModal: _isMultiModal,
-                              onIsMultiModalChanged: (val) => setState(() => _isMultiModal = val),
-                              useNativeToolCall: _useNativeToolCall,
-                              onUseNativeToolCallChanged: (val) => setState(() => _useNativeToolCall = val),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _saveLlmSettings,
-                            icon: const Icon(Icons.save_outlined, size: 16),
-                            label: const Text('Save Settings'),
-                          ),
-                        ),
-                      ],
-                      const Divider(height: 24),
-
-                      // --- Section 2: MCP Tool Servers ---
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  ],
+                ),
+              ),
+              TabBar(
+                labelColor: theme.colorScheme.primary,
+                unselectedLabelColor: Colors.grey,
+                indicatorSize: TabBarIndicatorSize.tab,
+                tabs: [
+                  const Tab(
+                    icon: Icon(Icons.psychology_outlined),
+                    text: 'LLM Settings',
+                  ),
+                  const Tab(
+                    icon: Icon(Icons.hub_outlined),
+                    text: 'MCP Servers',
+                  ),
+                  if (isDesktop)
+                    const Tab(
+                      icon: Icon(Icons.app_registration_outlined),
+                      text: 'Registry',
+                    ),
+                ],
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    // Tab 1: LLM Settings
+                    Form(
+                      key: _formKey,
+                      child: ListView(
+                        padding: const EdgeInsets.all(16.0),
                         children: [
-                          Text(
-                            'MCP SERVERS',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add_link, size: 24),
-                            tooltip: 'Add / Catalog MCP',
-                            onPressed: () => RemoteMcpDialog.show(
-                              context,
-                              widget.controller,
-                            ),
+                          Column(
+                            spacing: 12,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              LlmConfigForm(
+                                provider: _selectedProvider,
+                                onProviderChanged: (val) {
+                                  // Save current provider's fields before switching
+                                  _providerCache[_selectedProvider] =
+                                      _ProviderFieldCache(
+                                        model: _modelCtrl.text,
+                                        apiKey: _apiKeyCtrl.text,
+                                        baseUrl: _baseUrlCtrl.text,
+                                      );
+                                  // Restore or clear fields for the new provider
+                                  final cached = _providerCache[val];
+                                  if (cached != null) {
+                                    _modelCtrl.text = cached.model;
+                                    _apiKeyCtrl.text = cached.apiKey;
+                                    _baseUrlCtrl.text = cached.baseUrl;
+                                  } else {
+                                    _modelCtrl.clear();
+                                    _apiKeyCtrl.clear();
+                                    _baseUrlCtrl.clear();
+                                  }
+                                  setState(() {
+                                    _selectedProvider = val;
+                                  });
+                                },
+                                modelCtrl: _modelCtrl,
+                                apiKeyCtrl: _apiKeyCtrl,
+                                baseUrlCtrl: _baseUrlCtrl,
+                              ),
+                              if (_selectedProvider != LlmProvider.none) ...[
+                                const SizedBox(height: 12),
+                                ExpansionTile(
+                                  title: const Text(
+                                    'Advanced Hyperparameters & Flags',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  tilePadding: EdgeInsets.zero,
+                                  children: [
+                                    LlmAdvancedSettingsForm(
+                                      tempCtrl: _tempCtrl,
+                                      maxTokensCtrl: _maxTokensCtrl,
+                                      maxToolOutputSizeCtrl: _maxToolOutputSizeCtrl,
+                                      tokenWarningThresholdCtrl:
+                                          _tokenWarningThresholdCtrl,
+                                      topKCtrl: _topKCtrl,
+                                      topPCtrl: _topPCtrl,
+                                      repeatPenaltyCtrl: _repeatPenaltyCtrl,
+                                      seedCtrl: _seedCtrl,
+                                      thinking: _thinking,
+                                      onThinkingChanged: (val) =>
+                                          setState(() => _thinking = val),
+                                      isSlm: _isSlm,
+                                      onIsSlmChanged: (val) =>
+                                          setState(() => _isSlm = val),
+                                      isMultiModal: _isMultiModal,
+                                      onIsMultiModalChanged: (val) =>
+                                          setState(() => _isMultiModal = val),
+                                      useNativeToolCall: _useNativeToolCall,
+                                      onUseNativeToolCallChanged: (val) =>
+                                          setState(() => _useNativeToolCall = val),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: FilledButton.icon(
+                                    onPressed: _saveLlmSettings,
+                                    icon: const Icon(Icons.save_outlined, size: 16),
+                                    label: const Text('Save Settings'),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
-                      if (widget.controller.servers.isEmpty)
-                        Text(
-                          'No HTTP MCP servers configured.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
-                        )
-                      else
-                        ...widget.controller.servers.map((server) {
-                          return Card(
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Column(
-                                spacing: 4,
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Switch(
-                                        value: server.enabled,
-                                        onChanged: (val) => widget.controller
-                                            .toggleServer(server.id, val),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          server.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_outlined,
-                                          size: 18,
-                                        ),
-                                        onPressed: () => EditMcpServerDialog.show(
-                                          context,
-                                          server,
-                                          widget.controller,
-                                        ),
-                                        tooltip: 'Edit Details',
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.red,
-                                          size: 18,
-                                        ),
-                                        onPressed: () => widget.controller
-                                            .removeServer(server.id),
-                                        tooltip: 'Remove',
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    '${server.url}${server.mcpEndpoint}',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.grey,
-                                      fontFamily: 'monospace',
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    spacing: 8,
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: () =>
-                                            _testMcpServerConnection(server),
-                                        icon: const Icon(
-                                          Icons.wifi_tethering,
-                                          size: 12,
-                                        ),
-                                        label: const Text(
-                                          'Test',
-                                          style: TextStyle(fontSize: 11),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          minimumSize: Size.zero,
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                      ),
-                                      OutlinedButton.icon(
-                                        onPressed: () =>
-                                            _discoverServerTools(server),
-                                        icon: const Icon(
-                                          Icons.list_alt,
-                                          size: 12,
-                                        ),
-                                        label: const Text(
-                                          'Tools',
-                                          style: TextStyle(fontSize: 11),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          minimumSize: Size.zero,
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                    ),
+                    // Tab 2: MCP Servers
+                    ListView(
+                      padding: const EdgeInsets.all(16.0),
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'CONFIGURED MCP SERVERS',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          );
-                        }),
-                    ],
-                  ),
-                ],
+                            IconButton(
+                              icon: const Icon(Icons.add_link, size: 24),
+                              tooltip: 'Add / Catalog MCP',
+                              onPressed: () => RemoteMcpDialog.show(
+                                context,
+                                widget.controller,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (widget.controller.servers.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24.0),
+                            child: Center(
+                              child: Text(
+                                'No HTTP MCP servers configured.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ...widget.controller.servers.map((server) {
+                            final statusColor = server.isOnline == true
+                                ? Colors.green
+                                : (server.isOnline == false
+                                    ? Colors.red
+                                    : Colors.grey);
+                            final statusLabel = server.isOnline == true
+                                ? 'Online'
+                                : (server.isOnline == false
+                                    ? 'Offline'
+                                    : 'Unknown');
+                            final apiKeyStatus = (server.apiKey ?? '').trim().isNotEmpty
+                                ? 'API key configured'
+                                : 'API key missing';
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Tooltip(
+                                          message: 'Server Status: $statusLabel',
+                                          child: Icon(
+                                            Icons.circle,
+                                            size: 10,
+                                            color: statusColor,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Transform.scale(
+                                          scale: 0.8,
+                                          child: Switch(
+                                            value: server.enabled,
+                                            onChanged: (val) => widget.controller
+                                                .toggleServer(server.id, val),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        IconButton(
+                                          icon: const Icon(Icons.list_alt, size: 20),
+                                          tooltip: 'Discover Tools',
+                                          onPressed: () => _discoverServerTools(server),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.edit_outlined, size: 20),
+                                          tooltip: 'Edit Server',
+                                          onPressed: () => EditMcpServerDialog.show(
+                                            context,
+                                            server,
+                                            widget.controller,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.wifi_tethering, size: 20),
+                                          tooltip: 'Test Connection',
+                                          onPressed: () => _testMcpServerConnection(server),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                          tooltip: 'Remove',
+                                          onPressed: () => widget.controller.removeServer(server.id),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      server.name,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      [
+                                        if (server.description != null && server.description!.trim().isNotEmpty)
+                                          server.description!.trim(),
+                                        '${server.url}${server.mcpEndpoint}',
+                                        'Cloud MCP - $statusLabel',
+                                        apiKeyStatus,
+                                      ].join('\n'),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                    if (isDesktop)
+                      McpServerRegistryTab(controller: widget.controller),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
+}
+
+/// Holds per-provider model/apiKey/baseUrl so switching providers preserves previously entered data.
+class _ProviderFieldCache {
+  final String model;
+  final String apiKey;
+  final String baseUrl;
+
+  const _ProviderFieldCache({
+    required this.model,
+    required this.apiKey,
+    required this.baseUrl,
+  });
 }

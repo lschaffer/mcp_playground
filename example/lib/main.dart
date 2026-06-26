@@ -18,14 +18,14 @@ class McpPlaygroundExampleApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7C3AED),
+          seedColor: const Color.fromARGB(255, 58, 133, 237),
           brightness: Brightness.light,
         ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7C3AED),
+          seedColor: const Color.fromARGB(255, 58, 204, 237),
           brightness: Brightness.dark,
         ),
       ),
@@ -47,10 +47,10 @@ class McpPlaygroundScreen extends StatelessWidget {
     // parameters. These defaults can be overridden at call time by
     // providing 'host', 'port', 'username', 'password' arguments.
     final sshDefaults = <String, dynamic>{
-      'host': '192.168.1.100',
+      'host': '',
       'port': 22,
-      'username': 'admin',
-      'password': 'changeme',
+      'username': '',
+      'password': '',
       // Optionally set a private key (PEM) instead of password:
       // 'privateKey': '-----BEGIN OPENSSH PRIVATE KEY-----\n...',
     };

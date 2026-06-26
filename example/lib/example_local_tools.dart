@@ -1400,8 +1400,9 @@ class CreateChartPngTool extends McpLocalTool {
 
       final name = (item['name'] as String?)?.trim();
       final dataRaw = item['data'];
-      if (name == null || name.isEmpty || dataRaw is! List || dataRaw.isEmpty)
+      if (name == null || name.isEmpty || dataRaw is! List || dataRaw.isEmpty) {
         continue;
+      }
 
       final data = <double>[];
       for (final value in dataRaw) {

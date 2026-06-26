@@ -204,6 +204,15 @@ class McpServerConfig {
   final String? apiKey; // Bearer token (optional)
   final String? apiPassword; // Optional basic auth/headers parameter
   final bool enabled;
+  final bool? isOnline; // catalog-reported health state / test state
+  final String? description; // short description from catalog
+  final bool isLocal;
+  final String? localType; // 'python' | 'nodejs'
+  final String? localInstallMethod; // 'pip' | 'uvx' | 'npm' | 'npx'
+  final String? localPackage; // package name / pip requirements URL
+  final String? localCommand; // manually generated command
+  final Map<String, String>? localEnvVars; // environment variables
+  final bool isInstalled;
 
   const McpServerConfig({
     required this.id,
@@ -213,6 +222,15 @@ class McpServerConfig {
     this.apiKey,
     this.apiPassword,
     this.enabled = true,
+    this.isOnline,
+    this.description,
+    this.isLocal = false,
+    this.localType,
+    this.localInstallMethod,
+    this.localPackage,
+    this.localCommand,
+    this.localEnvVars,
+    this.isInstalled = false,
   });
 
   McpServerConfig copyWith({
@@ -223,6 +241,15 @@ class McpServerConfig {
     String? apiKey,
     String? apiPassword,
     bool? enabled,
+    bool? isOnline,
+    String? description,
+    bool? isLocal,
+    String? localType,
+    String? localInstallMethod,
+    String? localPackage,
+    String? localCommand,
+    Map<String, String>? localEnvVars,
+    bool? isInstalled,
   }) {
     return McpServerConfig(
       id: id ?? this.id,
@@ -232,6 +259,15 @@ class McpServerConfig {
       apiKey: apiKey ?? this.apiKey,
       apiPassword: apiPassword ?? this.apiPassword,
       enabled: enabled ?? this.enabled,
+      isOnline: isOnline ?? this.isOnline,
+      description: description ?? this.description,
+      isLocal: isLocal ?? this.isLocal,
+      localType: localType ?? this.localType,
+      localInstallMethod: localInstallMethod ?? this.localInstallMethod,
+      localPackage: localPackage ?? this.localPackage,
+      localCommand: localCommand ?? this.localCommand,
+      localEnvVars: localEnvVars ?? this.localEnvVars,
+      isInstalled: isInstalled ?? this.isInstalled,
     );
   }
 
@@ -243,6 +279,15 @@ class McpServerConfig {
         if (apiKey != null) 'apiKey': apiKey,
         if (apiPassword != null) 'apiPassword': apiPassword,
         'enabled': enabled,
+        if (isOnline != null) 'isOnline': isOnline,
+        if (description != null) 'description': description,
+        'isLocal': isLocal,
+        if (localType != null) 'localType': localType,
+        if (localInstallMethod != null) 'localInstallMethod': localInstallMethod,
+        if (localPackage != null) 'localPackage': localPackage,
+        if (localCommand != null) 'localCommand': localCommand,
+        if (localEnvVars != null) 'localEnvVars': localEnvVars,
+        'isInstalled': isInstalled,
       };
 
   factory McpServerConfig.fromJson(Map<String, dynamic> json) {
@@ -254,6 +299,17 @@ class McpServerConfig {
       apiKey: json['apiKey'] as String?,
       apiPassword: json['apiPassword'] as String?,
       enabled: json['enabled'] as bool? ?? true,
+      isOnline: json['isOnline'] as bool?,
+      description: json['description'] as String?,
+      isLocal: json['isLocal'] as bool? ?? false,
+      localType: json['localType'] as String?,
+      localInstallMethod: json['localInstallMethod'] as String?,
+      localPackage: json['localPackage'] as String?,
+      localCommand: json['localCommand'] as String?,
+      localEnvVars: json['localEnvVars'] != null
+          ? Map<String, String>.from(json['localEnvVars'] as Map)
+          : null,
+      isInstalled: json['isInstalled'] as bool? ?? false,
     );
   }
 }

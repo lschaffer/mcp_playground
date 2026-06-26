@@ -162,6 +162,25 @@ McpPlayground(
 )
 ```
 
+#### 💬 Prompt Examples per Tool
+
+The tools are designed to be invoked by the LLM through natural language. Here are example user prompts that trigger each tool:
+
+| Tool | Example User Prompt |
+|------|-------------------|
+| `get_current_weather` | *"What's the current weather in Vienna?"* |
+| `get_hourly_forecast` | *"Give me the hourly weather forecast for Tokyo for the next 24 hours."* |
+| `get_daily_forecast` | *"Show me the 7-day forecast for New York."* |
+| `geocode_weather_city` | *"What are the coordinates of Amsterdam?"* |
+| `list_directory` | *"List the contents of /home/user/projects on the remote server."* |
+| `read_file` | *"Read /var/log/syslog on the remote machine."* |
+| `download_file` | *"Download /home/user/report.pdf from the server."* |
+| `upload_file` | *"Upload the file 'hello.txt' with content 'Hello World' to /tmp/ on the remote server."* |
+| `execute_command` | *"Run 'df -h' on the remote server to check disk space."* |
+| `make_directory` | *"Create a directory /home/user/backups on the remote server."* |
+| `remove_directory` | *"Remove the empty directory /home/user/temp on the remote server."* |
+| `create_chart_png` | *"Generate a bar chart with Python: 45, JavaScript: 35, Dart: 25, Go: 15."* |
+
 Each tool extends [`McpLocalTool`](../lib/local_tools.dart:4):
 
 ```dart

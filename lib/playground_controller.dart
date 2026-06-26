@@ -7,6 +7,7 @@ import 'models.dart';
 import 'mcp_client.dart';
 import 'llm_service.dart';
 import 'local_tools.dart';
+import 'local_mcp_client.dart';
 
 abstract class McpPlaygroundStorageDelegate {
   Future<void> saveLlmConfig(LlmConfig config);
@@ -99,7 +100,7 @@ class PlaygroundController extends ChangeNotifier {
   bool _generating = false;
   String? _errorMessage;
   bool _stopAfterToolCall = false;
-  final Set<String> _disabledToolNames = {};
+  final Set<String> _enabledToolNames = {};
 
   // ── Tool loop interception ──────────────────────────────────────
   /// Maximum number of tool call iterations per user request.
@@ -206,12 +207,12 @@ class PlaygroundController extends ChangeNotifier {
 
   List<MCPClientDef> get mcpClients => _mcpManager.clients;
 
-  Set<String> get disabledToolNames => _disabledToolNames;
+  Set<String> get enabledToolNames => _enabledToolNames;
   void toggleToolEnabled(String toolName, bool enabled) {
     if (enabled) {
-      _disabledToolNames.remove(toolName);
+      _enabledToolNames.add(toolName);
     } else {
-      _disabledToolNames.add(toolName);
+      _enabledToolNames.remove(toolName);
     }
     notifyListeners();
   }
@@ -286,25 +287,34 @@ class PlaygroundController extends ChangeNotifier {
   Future<void> _syncMcpServers() async {
     await _mcpManager.disconnectAll();
     final activeServers = _servers
-        .where((s) => s.enabled && s.url.trim().isNotEmpty)
+        .where((s) => s.enabled && (s.isLocal || s.url.trim().isNotEmpty))
         .toList();
 
-    // Re-register external servers
+    // Re-register external / local servers
     for (final s in activeServers) {
-      final client = MCPClient(
-        s.url,
-        mcpEndpoint: s.mcpEndpoint,
-        bearerToken: s.apiKey,
-        apiPassword: s.apiPassword,
-        logCallback: (msg, {bool isError = false}) =>
-            debugPrint('[Playground MCP Log: ${s.name}] $msg'),
-      );
+      final MCPClient client;
+      if (s.isLocal) {
+        client = LocalMCPClient(
+          s,
+          logCallback: (msg, {bool isError = false}) =>
+              debugPrint('[Playground Local MCP Log: ${s.name}] $msg'),
+        );
+      } else {
+        client = MCPClient(
+          s.url,
+          mcpEndpoint: s.mcpEndpoint,
+          bearerToken: s.apiKey,
+          apiPassword: s.apiPassword,
+          logCallback: (msg, {bool isError = false}) =>
+              debugPrint('[Playground MCP Log: ${s.name}] $msg'),
+        );
+      }
       _mcpManager.registerClient(
         MCPClientDef(name: s.id, client: client, displayName: s.name),
       );
     }
 
-    // Connect to external servers in parallel
+    // Connect to external/local servers in parallel
     await _mcpManager.initializeAll();
   }
 
@@ -379,8 +389,9 @@ class PlaygroundController extends ChangeNotifier {
     List<MessageAttachment>? attachments,
   }) async {
     if ((text.trim().isEmpty && (attachments == null || attachments.isEmpty)) ||
-        _generating)
+        _generating) {
       return;
+    }
 
     // ── Reset tool loop tracking for this new user request ──────────
     _toolIterationCount = 0;
@@ -441,11 +452,11 @@ class PlaygroundController extends ChangeNotifier {
           mcpTools.addAll(
             _localTools
                 .map((t) => t.toMCPTool())
-                .where((t) => !_disabledToolNames.contains(t.name)),
+                .where((t) => _enabledToolNames.contains(t.name)),
           );
           mcpTools.addAll(
             _mcpManager.availableTools.where(
-              (t) => !_disabledToolNames.contains(t.name),
+              (t) => _enabledToolNames.contains(t.name),
             ),
           );
         }

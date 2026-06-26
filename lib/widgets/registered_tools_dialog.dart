@@ -10,6 +10,15 @@ class RegisteredToolsDialog extends StatelessWidget {
   const RegisteredToolsDialog({super.key, required this.controller});
 
   static Future<void> show(BuildContext context, PlaygroundController controller) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    if (isMobile) {
+      return showDialog(
+        context: context,
+        builder: (ctx) => Dialog.fullscreen(
+          child: RegisteredToolsDialog(controller: controller),
+        ),
+      );
+    }
     return showDialog(
       context: context,
       builder: (ctx) => RegisteredToolsDialog(controller: controller),
@@ -20,39 +29,46 @@ class RegisteredToolsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final localTools = controller.localTools.map((t) => t.toMCPTool()).toList();
     final externalTools = controller.externalTools;
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
-    return DefaultTabController(
+    final childWidget = DefaultTabController(
       length: 2,
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 580, maxHeight: 600),
-          child: Scaffold(
-            appBar: AppBar(
-              title: const Text('Registered Tools', style: TextStyle(fontWeight: FontWeight.bold)),
-              automaticallyImplyLeading: false,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Inbuilt Tools'),
-                  Tab(text: 'Server Tools'),
-                ],
-              ),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Registered Tools', style: TextStyle(fontWeight: FontWeight.bold)),
+          automaticallyImplyLeading: false,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
             ),
-            body: TabBarView(
-              children: [
-                _buildToolsList(context, localTools, 'No inbuilt tools registered.'),
-                _buildToolsList(context, externalTools, 'No active HTTP/SSE MCP server tools found.'),
-              ],
-            ),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Inbuilt Tools'),
+              Tab(text: 'Server Tools'),
+            ],
           ),
         ),
+        body: TabBarView(
+          children: [
+            _buildToolsList(context, localTools, 'No inbuilt tools registered.'),
+            _buildToolsList(context, externalTools, 'No active HTTP/SSE MCP server tools found.'),
+          ],
+        ),
+      ),
+    );
+
+    if (isMobile) {
+      return childWidget;
+    }
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 580, maxHeight: 600),
+        child: childWidget,
       ),
     );
   }

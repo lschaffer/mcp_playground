@@ -86,6 +86,47 @@ class ChatBubble extends StatelessWidget {
                       code: const TextStyle(fontFamily: 'monospace', fontSize: 13),
                     ),
                   ),
+                  if (message.content.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: message.content));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Copied to clipboard'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.content_copy_outlined,
+                                  size: 13,
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Copy',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -114,6 +155,8 @@ class ChatBubble extends StatelessWidget {
         ),
         title: Text(
           'Tool Execution Call: ${message.toolName}',
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
           style: TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
@@ -202,37 +245,43 @@ class ChatBubble extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-      decoration: BoxDecoration(
+      child: Material(
         color: isError ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isError ? Colors.red.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3)),
-      ),
-      child: ExpansionTile(
-        dense: true,
-        initiallyExpanded: true,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        childrenPadding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
-        iconColor: isError ? Colors.red[700] : Colors.green[700],
-        collapsedIconColor: isError ? Colors.red[700] : Colors.green[700],
-        leading: CircleAvatar(
-          backgroundColor: isError ? Colors.red.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.15),
-          radius: 14,
-          child: Icon(
-            isError ? Icons.error_outline : Icons.check_circle_outline,
-            size: 14,
-            color: isError ? Colors.red : Colors.green,
-          ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: isError ? Colors.red.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3)),
         ),
-        title: Row(
-          children: [
-            Text(
-              isError ? 'Tool Error: ${message.toolName}' : 'Tool Result: ${message.toolName}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: isError ? Colors.red[700] : Colors.green[700],
-              ),
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          dense: true,
+          initiallyExpanded: true,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          childrenPadding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+          iconColor: isError ? Colors.red[700] : Colors.green[700],
+          collapsedIconColor: isError ? Colors.red[700] : Colors.green[700],
+          leading: CircleAvatar(
+            backgroundColor: isError ? Colors.red.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.15),
+            radius: 14,
+            child: Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              size: 14,
+              color: isError ? Colors.red : Colors.green,
             ),
+          ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isError ? 'Tool Error: ${message.toolName}' : 'Tool Result: ${message.toolName}',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isError ? Colors.red[700] : Colors.green[700],
+                  ),
+                ),
+              ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -265,8 +314,9 @@ class ChatBubble extends StatelessWidget {
           )
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _downloadImage(BuildContext context, Uint8List bytes, String? mimeType) async {
     try {

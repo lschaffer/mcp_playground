@@ -89,11 +89,13 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
+          title: Row(
+            children: const [
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 8),
-              Text('Connection Successful'),
+              Expanded(
+                child: Text('Connection Successful'),
+              ),
             ],
           ),
           content: Text(
@@ -112,11 +114,13 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
+          title: Row(
+            children: const [
               Icon(Icons.error_outline, color: Colors.red),
               SizedBox(width: 8),
-              Text('Connection Failed'),
+              Expanded(
+                child: Text('Connection Failed'),
+              ),
             ],
           ),
           content: Text(e.toString()),
