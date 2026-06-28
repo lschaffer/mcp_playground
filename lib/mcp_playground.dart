@@ -343,7 +343,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
     }
 
     final chartTools = _controller.localTools
-        .where((t) => t.name == 'create_chart_png')
+        .where((t) => t.name == 'create_chart_png' || t.name == 'chart2png')
         .map((t) => t.toMCPTool())
         .toList();
     if (chartTools.isNotEmpty) {
@@ -378,6 +378,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
             t.name != 'get_daily_forecast' &&
             t.name != 'geocode_weather_city' &&
             t.name != 'create_chart_png' &&
+            t.name != 'chart2png' &&
             !t.name.startsWith('ssh_') &&
             !t.name.startsWith('sftp_'))
         .map((t) => t.toMCPTool())
