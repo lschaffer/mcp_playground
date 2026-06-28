@@ -2,6 +2,10 @@
 
 > An interactive AI Agent Playground widget for Flutter — connect to any LLM provider, register local Dart-native tools and remote HTTP MCP servers, and prototype agentic workflows in a chat-based UI.
 
+## Docs
+
+- [Full Documentation for LLMs](https://raw.githubusercontent.com/lschaffer/mcp_playground/main/llms-full.txt): All documentation inlined in a single file for LLM consumption
+
 ## Core Files
 
 - [README.md](file:///c:/projects/ls/mcp_playground/README.md): Detailed installation instructions, widget API documentation, and usage examples.

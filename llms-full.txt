@@ -1,0 +1,142 @@
+# mcp_playground_flutter - Complete Documentation
+
+> An interactive AI Agent Playground widget for Flutter — connect to any LLM provider, register local Dart-native tools and remote HTTP MCP servers, and prototype agentic workflows in a chat-based UI.
+
+## Features
+
+- **Multi-LLM support** – OpenAI, Anthropic Claude, Google Gemini, Ollama (local), Mistral AI, and any OpenAI-compatible endpoint.
+- **HTTP MCP Server registry** – Browse PulseMCP and Smithery catalogs or add custom remote MCP servers.
+- **Local MCP subprocesses** – Install, configure, and launch local stdio MCP servers (Node.js, Python) directly within the application (supported in desktop mode).
+- **Dart-native local tools** – Extend with custom Dart-native tools (e.g., Weather, SSH, and Chart-generation tools).
+- **Agentic tool loop** – Automatic iterative tool calling with duplicate-call detection, iteration limits, and safety guards.
+- **Save/Load configurations** – Persist LLM settings, tool selections, system prompts, and server lists via `SharedPreferences` or a custom `McpPlaygroundStorageDelegate`.
+- **Agent Inspector** – Side-by-side conversation + internal state inspector for debugging agent behavior.
+- **Cross-platform** – Works on Android, iOS, Web, macOS, Windows, and Linux.
+
+## Installation
+
+Add to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  mcp_playground_flutter: ^0.0.1
+```
+
+Then import:
+
+```dart
+import 'package:mcp_playground_flutter/mcp_playground_flutter.dart';
+```
+
+## Widget API
+
+### `McpPlayground`
+
+The main widget. Drop it into your app to get a full AI playground UI.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `initialLlmConfig` | `LlmConfig?` | `null` | Default LLM provider, model, API key, and hyperparameters. |
+| `initialServers` | `List<McpServerConfig>?` | `null` | Pre-configured list of HTTP MCP servers to connect to. |
+| `initialLocalMcpServers` | `List<LocalMcpServerSetup>?` | `null` | Pre-configured list of local Node.js or Python MCP servers. |
+| `storageDelegate` | `McpPlaygroundStorageDelegate?` | `null` | Custom persistence layer for settings. |
+| `customLocalTools` | `List<McpLocalTool>?` | `null` | Custom Dart-native tool implementations. |
+| `disableConfigDialog` | `bool` | `false` | Disable opening settings dialog when LLM is not configured. |
+| `messageContentBuilder` | `Widget? Function(BuildContext, ChatMessage)?` | `null` | Intercept message layouts & render custom widgets. |
+| `locale` | `String?` | `null` | Explicit locale override ('en' or 'de'). |
+
+#### Basic usage
+
+```dart
+McpPlayground()
+```
+
+#### With default LLM config & custom tools
+
+```dart
+McpPlayground(
+  initialLlmConfig: LlmConfig(
+    provider: LlmProvider.openai,
+    model: 'gpt-4o-mini',
+    apiKey: 'sk-...',
+  ),
+  customLocalTools: [
+    GetCurrentWeatherTool(),
+    SshListDirectoryTool(() => sshDefaults),
+  ],
+)
+```
+
+## Configuration Schemas
+
+### `LlmConfig`
+
+Configures an LLM provider and its parameters.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | `LlmProvider` | *(required)* | One of: `none`, `openai`, `claude`, `gemini`, `ollama`, `openaiCompatible`, `mistral`. |
+| `model` | `String` | *(required)* | Model identifier. |
+| `apiKey` | `String` | *(required)* | API key for the provider. |
+| `baseUrl` | `String` | `''` | Custom base URL. |
+| `temperature` | `double` | `0.2` | Sampling temperature. |
+| `maxTokens` | `int` | `0` | Maximum output tokens. |
+| `thinking` | `bool` | `false` | Enable extended thinking (Claude). |
+| `useNativeToolCall` | `bool` | `true` | Use provider-native tool-calling API. |
+
+### `McpServerConfig`
+
+Defines a remote HTTP MCP server connection.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `String` | *(required)* | Unique identifier. |
+| `name` | `String` | *(required)* | Human-readable label. |
+| `url` | `String` | *(required)* | Base URL of the MCP server. |
+| `mcpEndpoint` | `String` | `'/mcp'` | JSON-RPC endpoint path. |
+
+### `McpLocalTool`
+
+Abstract base class for implementing Dart-native tools.
+
+```dart
+class MyCustomTool extends McpLocalTool {
+  @override
+  String get name => 'my_custom_tool';
+
+  @override
+  String get description => 'Does something useful.';
+
+  @override
+  Map<String, dynamic> get inputSchema => {
+    'type': 'object',
+    'properties': {
+      'input': {'type': 'string', 'description': 'The input string'},
+    },
+    'required': ['input'],
+  };
+
+  @override
+  Future<MCPToolResult> execute(Map<String, dynamic> arguments) async {
+    final result = doSomething(arguments['input']);
+    return MCPToolResult(
+      content: [MCPContent(type: 'text', text: result)],
+    );
+  }
+}
+```
+
+## Local MCP Servers (Desktop Stdio Transport)
+
+On desktop platforms, register Node.js and Python MCP servers directly as child subprocesses using stdio transport.
+
+- **Desktop Only**: Subprocesses are not supported on Web or Mobile.
+- **Node.js**: Node 18+ required.
+- **Python**: Python 3 and the `uv` tool are required.
+- **Auto-Installation**: Progressive setup modal displayed during environment setup.
+
+## Web Mode Restrictions & CORS
+
+- **CORS requirements**: Remote HTTP MCP servers must set CORS headers permitting origin access and preflight `OPTIONS` requests.
+- **Localhost access**: Requests to localhost from HTTPS apps may fail without proxying or serving local HTTP versions.
+- **API limitations**: Local child processes and `dart:io` operations do not function in Web mode.
