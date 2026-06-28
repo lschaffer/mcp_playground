@@ -1,10 +1,13 @@
+## 0.0.3
+
+* Restructured folder layout to relocate all internal widgets and client submodules under the private `lib/src/` directory.
+* Added comprehensive dartdoc comments to all exported public API classes, properties, and methods to secure full documentation score points on pub.dev.
+* Refined package description metadata in `pubspec.yaml` to note support for local Node.js and Python subprocesses.
+
 ## 0.0.2
 
 * Upgraded `openai_dart` to `^7.0.0`, `anthropic_sdk_dart` to `^5.0.0`, and `ollama_dart` to `^2.3.0` and rebuilt all client adapters to match the new SDK specifications.
 * Hid the Load, Save, and Clear configuration buttons in the active play/chat view to restrict them only to the initialization screen.
-* Restructured folder layout to relocate all internal widgets and client submodules under the private `lib/src/` directory.
-* Added comprehensive dartdoc comments to all exported public API classes, properties, and methods to secure full documentation score points on pub.dev.
-* Refined package description metadata in `pubspec.yaml` to note support for local Node.js and Python subprocesses.
 * Upgraded `file_picker` dependency to `^11.0.2` (migrated to static API).
 * Upgraded `flutter_lints` dependency to `^6.0.0` and cleaned linter syntax.
 * Fixed broken visual preview image links in example documentation to use relative paths for pub.dev CDN compatibility.
