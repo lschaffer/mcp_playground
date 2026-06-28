@@ -1,8 +1,8 @@
-# MCP Playground Examples Showcase
+# MCP Playground Example Showcase
 
-This directory contains a consolidated showcase application demonstrating how to integrate the [`mcp_playground_flutter`](https://pub.dev/packages/mcp_playground_flutter) widget into a Flutter project.
+This directory contains a complete showcase application demonstrating how to integrate the [`mcp_playground_flutter`](https://pub.dev/packages/mcp_playground_flutter) widget into a Flutter project.
 
-It provides a selection interface to launch either the **Full UI Example** or the **Lite Desktop Example**.
+It initializes the playground widget with custom local Dart-native tools (Weather, SSH/SFTP, and Chart Generator) and registers local MCP subprocesses (`Git` and `Filesystem`) automatically.
 
 ---
 
@@ -41,19 +41,16 @@ Here is how the playground and its configuration interfaces look:
 
 ---
 
-## 📦 Demonstrations Included
+## 📦 Features Demonstrated
 
-### 1. Full UI Example (Multiplatform)
-- **Target**: Web, Android, iOS, Windows, macOS, Linux.
-- **Features**: Registers built-in Dart-native tools (Weather forecast, SSH/SFTP terminal actions, and canvas-based PNG chart generators) and connects dynamically to remote HTTP MCP servers.
-- **Visuals**:
-  ![Local Dart MCP Test](https://raw.githubusercontent.com/lschaffer/mcp_playground/main/screenshots/example_ui/local_dart_mcp_test.png)
-
-### 2. Lite Desktop Example (Desktop Only)
-- **Target**: macOS, Windows, Linux.
-- **Features**: Bypasses the configuration setup dialog on startup (`disableConfigDialog: true`) using credentials loaded from `.env`. Automatically registers and spawns local subprocess stdio MCP servers:
-  - **Git** (runs `mcp-server-git` via `uvx`)
-  - **Filesystem** (runs `@modelcontextprotocol/server-filesystem` via `npx` or `npm`)
-- **Host Requirements**:
-  - **Node.js** (for npx filesystem actions)
-  - **Python 3** & **`uv`** tool (for uvx git actions)
+- **Custom Local Dart-native Tools**:
+  - **Weather**: Fetch conditions and forecasts using the Open-Meteo API.
+  - **SSH/SFTP**: List, read, download, upload files and execute commands.
+  - **Chart Generator**: Generate custom line, bar, area, pie, or scatter charts on a canvas.
+- **Local MCP Subprocesses (Subprocesses Mode)**:
+  - Spawns local stdio-based MCP servers:
+    - **Git** (runs `mcp-server-git` via `uvx`)
+    - **Filesystem** (runs `@modelcontextprotocol/server-filesystem` via `npx` or `npm`)
+- **Host Requirements for Local Subprocesses**:
+  - **Node.js** (for filesystem npx actions)
+  - **Python 3** & **`uv`** (for git uvx actions)

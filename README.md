@@ -11,7 +11,7 @@ An interactive AI Agent Playground widget for Flutter — connect to any LLM pro
 
 - **Multi-LLM support** – OpenAI, Anthropic Claude, Google Gemini, Ollama (local), Mistral AI, and any OpenAI-compatible endpoint.
 - **HTTP MCP Server registry** – Browse [PulseMCP](https://pulsemcp.com) and [Smithery](https://smithery.ai) catalogs or add custom remote MCP servers.
-- **Dart-native local tools** – Able to add custom Dart-native local MCP tools; see examples in `example_ui` (weather, SSH, chart-generation).
+- **Dart-native local tools** – Able to add custom Dart-native local MCP tools; see examples in `example` (weather, SSH, chart-generation).
 - **Agentic tool loop** – Automatic iterative tool calling with duplicate-call detection, iteration limits, and safety guards.
 - **Save/Load configurations** – Persist LLM settings, tool selections, system prompts, and server lists via `SharedPreferences` or a custom `McpPlaygroundStorageDelegate`.
 - **Agent Inspector** – Side-by-side conversation + internal state inspector for debugging agent behavior.
@@ -220,10 +220,9 @@ On desktop platforms (macOS, Windows, Linux), you can register, install, and run
 
 ## 📁 Examples
 
-This repository contains two example projects showing different integration patterns:
+This repository contains a comprehensive showcase example showing both local Dart-native tools and local stdio MCP servers:
 
-- **[example_ui](examples/example_ui)**: A **platform-independent** example that runs on all platforms (Web, Mobile, Desktop). It demonstrates registering remote HTTP MCP servers and built-in Dart-native tools (such as Weather and SSH/SFTP tools) without host subprocess dependencies.
-- **[example_lite](examples/example_lite)**: A **desktop-specific** example showing how to run in headless/pre-configured mode. It configures default LLM settings, bypasses the settings drawer on startup using `disableConfigDialog: true`, and pre-loads local `Git` and `Filesystem` MCP servers using `initialLocalMcpServers`.
+- **[example](example)**: A complete example demonstrating all features (Weather, SSH, Chart generator local tools) and auto-installing/configuring local `Git` and `Filesystem` MCP servers.
 
 ---
 
