@@ -5,10 +5,10 @@ packages:
     dependency: transitive
     description:
       name: anthropic_sdk_dart
-      sha256: a5a1cc97d4253dd039c3bc36a8eb2fe14bb59c120765f5b91c5fabb8576129e8
+      sha256: "30162d70384f38f98f22e2402776f28d260b721fef684893dbed2a3108e72428"
       url: "https://pub.dev"
     source: hosted
-    version: "5.0.0"
+    version: "0.3.1"
   args:
     dependency: transitive
     description:
@@ -182,14 +182,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.0"
-  flutter_markdown:
+  flutter_markdown_plus:
     dependency: transitive
     description:
-      name: flutter_markdown
-      sha256: "08fb8315236099ff8e90cb87bb2b935e0a724a3af1623000a9cec930468e0f27"
+      name: flutter_markdown_plus
+      sha256: "039177906850278e8fb1cd364115ee0a46281135932fa8ecea8455522166d2de"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.7+1"
+    version: "1.0.7"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -208,6 +208,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  freezed_annotation:
+    dependency: transitive
+    description:
+      name: freezed_annotation
+      sha256: "7294967ff0a6d98638e7acb774aac3af2550777accd8149c90af5b014e6d44d8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.0"
   googleai_dart:
     dependency: transitive
     description:
@@ -256,6 +264,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
+  json_annotation:
+    dependency: transitive
+    description:
+      name: json_annotation
+      sha256: "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.12.0"
   leak_tracker:
     dependency: transitive
     description:
@@ -355,18 +371,18 @@ packages:
     dependency: transitive
     description:
       name: ollama_dart
-      sha256: ec1ed4d10ca53ca5014b50db2c189fe88634e3ba4203b328cb436562f884fe17
+      sha256: "7ced51fa4151bef696a9e1571ca7b4ac4bc4b35331e45ae5e0684560fcd26d99"
       url: "https://pub.dev"
     source: hosted
-    version: "2.3.0"
+    version: "0.3.0+1"
   openai_dart:
     dependency: transitive
     description:
       name: openai_dart
-      sha256: "17efcb65848c5aeb1f9e8d739bc8549ef0ac72e02098b679d609653c2d6e26e2"
+      sha256: "037605a210cb3b1d8ac72b11a4ace26f25ee9267aaf981d2af1d7f0524adcbf5"
       url: "https://pub.dev"
     source: hosted
-    version: "7.0.0"
+    version: "0.6.2"
   package_config:
     dependency: transitive
     description:
