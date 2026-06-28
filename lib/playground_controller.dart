@@ -606,8 +606,8 @@ class PlaygroundController extends ChangeNotifier {
                 'The tool "${call.name}" has already been successfully executed with these parameters. '
                 'Do NOT call this tool or any other tool again. Use the tool results in the history to write your final response now.';
 
-            continueLoop = false;
-            continue; // Exit the while loop; the forced turn will re-enter
+            continueLoop = true;
+            continue; // Go to next loop iteration; the forced turn will run without tools
           }
 
           // Record this tool call to prevent future duplicates
