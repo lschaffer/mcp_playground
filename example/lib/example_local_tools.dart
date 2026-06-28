@@ -635,7 +635,7 @@ class SshListDirectoryTool extends SshBaseLocalTool {
   SshListDirectoryTool(super.getGlobalSsh);
 
   @override
-  String get name => 'list_directory';
+  String get name => 'ssh_list_directory';
 
   @override
   String get description => 'List files and subdirectories at a remote path.';
@@ -688,7 +688,7 @@ class SshReadFileTool extends SshBaseLocalTool {
   SshReadFileTool(super.getGlobalSsh);
 
   @override
-  String get name => 'read_file';
+  String get name => 'ssh_read_file';
 
   @override
   String get description => 'Read the text content of a remote file.';
@@ -748,7 +748,7 @@ class SshDownloadFileTool extends SshBaseLocalTool {
   SshDownloadFileTool(super.getGlobalSsh);
 
   @override
-  String get name => 'download_file';
+  String get name => 'ssh_download_file';
 
   @override
   String get description =>
@@ -823,7 +823,7 @@ class SshUploadFileTool extends SshBaseLocalTool {
   SshUploadFileTool(super.getGlobalSsh);
 
   @override
-  String get name => 'upload_file';
+  String get name => 'ssh_upload_file';
 
   @override
   String get description =>
@@ -912,7 +912,7 @@ class SshExecuteCommandTool extends SshBaseLocalTool {
   SshExecuteCommandTool(super.getGlobalSsh);
 
   @override
-  String get name => 'execute_command';
+  String get name => 'ssh_execute_command';
 
   @override
   String get description =>
@@ -973,7 +973,7 @@ class SshMakeDirectoryTool extends SshBaseLocalTool {
   SshMakeDirectoryTool(super.getGlobalSsh);
 
   @override
-  String get name => 'make_directory';
+  String get name => 'ssh_make_directory';
 
   @override
   String get description =>
@@ -1026,7 +1026,7 @@ class SshRemoveDirectoryTool extends SshBaseLocalTool {
   SshRemoveDirectoryTool(super.getGlobalSsh);
 
   @override
-  String get name => 'remove_directory';
+  String get name => 'ssh_remove_directory';
 
   @override
   String get description =>
