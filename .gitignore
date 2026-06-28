@@ -34,3 +34,8 @@ migrate_working_dir/
 # Local MCP and dependencies
 .venv/
 node_modules/
+
+# Agent walkthrough and folder
+agents/walkthrough.md
+agents/
+
