@@ -349,6 +349,42 @@ class _McpPlaygroundState extends State<McpPlayground> {
       ));
     }
 
+    final sshTools = _controller.localTools
+        .where(
+          (t) =>
+              t.name.startsWith('ssh_') ||
+              t.name.startsWith('sftp_') ||
+              t.name == 'ssh_execute_command',
+        )
+        .map((t) => t.toMCPTool())
+        .toList();
+    if (sshTools.isNotEmpty) {
+      groups.add(_ToolsetGroup(
+        name: 'SSH/SFTP',
+        description: 'Execute remote commands, list directories, read, and transfer files via SSH/SFTP.',
+        tools: sshTools,
+      ));
+    }
+
+    final otherTools = _controller.localTools
+        .where((t) =>
+            t.name != 'get_current_weather' &&
+            t.name != 'get_hourly_forecast' &&
+            t.name != 'get_daily_forecast' &&
+            t.name != 'geocode_weather_city' &&
+            t.name != 'create_chart_png' &&
+            !t.name.startsWith('ssh_') &&
+            !t.name.startsWith('sftp_'))
+        .map((t) => t.toMCPTool())
+        .toList();
+    if (otherTools.isNotEmpty) {
+      groups.add(_ToolsetGroup(
+        name: 'Custom Local Tools',
+        description: 'Custom Dart-native tools registered with the playground.',
+        tools: otherTools,
+      ));
+    }
+
     for (final client in _controller.mcpClients) {
       if (client.isConnected) {
         final isExt = client.url.startsWith('http');
@@ -376,9 +412,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
       context: context,
       builder: (ctx) {
         final theme = Theme.of(context);
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final groups = _getToolsetGroups();
+        return ListenableBuilder(
+          listenable: _controller,
+          builder: (ctx, _) {
+            return StatefulBuilder(
+              builder: (context, setDialogState) {
+                final groups = _getToolsetGroups();
 
             final builtin = groups
                 .where((g) => !g.isExternal && !g.isInstalled)
@@ -510,6 +549,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
                 ),
               ],
             );
+          },
+        );
           },
         );
       },

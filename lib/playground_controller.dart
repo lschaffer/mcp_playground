@@ -148,6 +148,7 @@ class PlaygroundController extends ChangeNotifier {
     if (customLocalTools != null) {
       _localTools.addAll(customLocalTools);
     }
+    _mcpManager.addListener(notifyListeners);
     _initAndLoad();
   }
 
@@ -637,6 +638,7 @@ class PlaygroundController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mcpManager.removeListener(notifyListeners);
     _mcpManager.disconnectAll();
     _mcpManager.dispose();
     super.dispose();
