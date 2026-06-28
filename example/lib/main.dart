@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:mcp_playground_flutter/mcp_playground_flutter.dart';
@@ -101,10 +103,12 @@ class McpPlaygroundScreen extends StatelessWidget {
       ),
     ];
 
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
     return McpPlayground(
       initialLlmConfig: initialLlm.provider != LlmProvider.none ? initialLlm : null,
       customLocalTools: demoLocalTools,
-      initialLocalMcpServers: initialLocalServers,
+      initialLocalMcpServers: isDesktop ? initialLocalServers : null,
       messageContentBuilder: (context, message) {
         if (message.type != MessageType.toolResponse) return null;
         if (message.toolName != 'create_chart_png') return null;
