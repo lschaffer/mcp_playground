@@ -6,7 +6,6 @@ import 'package:openai_dart/openai_dart.dart' as openai;
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:ollama_dart/ollama_dart.dart' as ollama;
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
 import 'models.dart';
 
 /// Represents a tool call requested by the LLM.
@@ -434,11 +433,13 @@ class LLMService {
       final functionCalls = response.functionCalls;
       if (functionCalls.isNotEmpty) {
         for (final fc in functionCalls) {
+          final args = Map<String, dynamic>.from(fc.args ?? {});
+          final argHash = jsonEncode(args).hashCode.toRadixString(16);
           toolCalls.add(
             LLMToolCall(
-              id: const Uuid().v4(),
+              id: 'call_${fc.name}_$argHash',
               name: fc.name,
-              arguments: Map<String, dynamic>.from(fc.args ?? {}),
+              arguments: args,
             ),
           );
         }
@@ -595,11 +596,14 @@ class LLMService {
 
       if (response.message?.toolCalls != null && response.message!.toolCalls!.isNotEmpty) {
         for (final tc in response.message!.toolCalls!) {
+          final name = tc.function?.name ?? '';
+          final args = tc.function?.arguments ?? {};
+          final argHash = jsonEncode(args).hashCode.toRadixString(16);
           toolCalls.add(
             LLMToolCall(
-              id: const Uuid().v4(),
-              name: tc.function?.name ?? '',
-              arguments: tc.function?.arguments ?? {},
+              id: 'call_${name}_$argHash',
+              name: name,
+              arguments: args,
             ),
           );
         }

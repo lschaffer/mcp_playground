@@ -441,11 +441,18 @@ class PlaygroundController extends ChangeNotifier {
       bool continueLoop = true;
 
       // 3. Execution System Prompt
-      final systemPrompt = _systemPrompt.trim().isNotEmpty
+      String systemPrompt = _systemPrompt.trim().isNotEmpty
           ? _systemPrompt
           : 'You are an agent equipped with tools. Focus on the user\'s task. '
                 'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
                 'Present final answers directly. Present code and logs inside clean formatting.';
+
+      // Inject short instructions into the system prompt to guide tool execution and loop prevention
+      systemPrompt += '\n\n'
+          'Tool execution rules:\n'
+          '- Each tool execution result is returned in a JSON structure: {"tool": "name", "id": "unique_id", "tool_executed": true, "tool_result": ...}.\n'
+          '- Once a tool has been successfully executed (tool_executed is true), you must NEVER call that tool with the same "id" or parameters again.\n'
+          '- Instead, formulate your final response to the user using the result provided in tool_result.';
 
       while (continueLoop && steps < maxSteps) {
         steps++;
@@ -534,7 +541,7 @@ class PlaygroundController extends ChangeNotifier {
 
           if (hasDuplicateId || hasDuplicateSignature) {
             // Intercept repeated tool call — force the model to finalise.
-            final previousResult = _messages
+            String previousResult = _messages
                 .lastWhere(
                   (m) => m.role == ChatRole.tool && m.toolName == call.name,
                   orElse: () => ChatMessage(
@@ -546,6 +553,15 @@ class PlaygroundController extends ChangeNotifier {
                 )
                 .content;
 
+            if (previousResult.trim().startsWith('{')) {
+              try {
+                final decoded = jsonDecode(previousResult);
+                if (decoded is Map && decoded.containsKey('tool_result')) {
+                  previousResult = decoded['tool_result'].toString();
+                }
+              } catch (_) {}
+            }
+
             final loopCorrectionText =
                 'The tool "${call.name}" was already successfully executed. '
                 'Previous result: $previousResult\n\n'
@@ -554,7 +570,14 @@ class PlaygroundController extends ChangeNotifier {
             _messages.add(
               ChatMessage(
                 id: call.id,
-                content: loopCorrectionText,
+                content: activeLlmConfig.provider == LlmProvider.ollama
+                    ? jsonEncode({
+                        'tool': call.name,
+                        'id': call.id,
+                        'tool_executed': true,
+                        'tool_result': loopCorrectionText,
+                      })
+                    : loopCorrectionText,
                 role: ChatRole.tool,
                 type: MessageType.toolResponse,
                 toolName: call.name,
@@ -610,19 +633,28 @@ class PlaygroundController extends ChangeNotifier {
             // Route to external HTTP MCP server
             result = await _mcpManager.callTool(call.name, call.arguments);
           }
-
           // Append tool response message
           final String responseContentText = result.content
               .where((c) => c.type == 'text')
               .map((c) => c.text ?? '')
               .join('\n');
 
+          final String finalContent;
+          if (activeLlmConfig.provider == LlmProvider.ollama) {
+            finalContent = jsonEncode({
+              'tool': call.name,
+              'id': call.id,
+              'tool_executed': true,
+              'tool_result': responseContentText.isNotEmpty ? responseContentText : 'Executed.',
+            });
+          } else {
+            finalContent = responseContentText.isNotEmpty ? responseContentText : 'Executed.';
+          }
+
           _messages.add(
             ChatMessage(
               id: call.id, // Align with tool call ID for LLM history reference
-              content: responseContentText.isNotEmpty
-                  ? responseContentText
-                  : 'Executed.',
+              content: finalContent,
               role: ChatRole.tool,
               type: MessageType.toolResponse,
               toolName: call.name,
