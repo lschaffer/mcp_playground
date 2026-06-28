@@ -30,3 +30,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# Local MCP and dependencies
+.venv/
+node_modules/
