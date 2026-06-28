@@ -47,7 +47,12 @@ class LocalMCPClient extends MCPClient {
       late List<String> cmdArgs;
 
       // Determine executable and args based on install type
-      if (serverConfig.localInstallMethod == 'uvx') {
+      if (serverConfig.customLaunchCommand != null &&
+          serverConfig.customLaunchCommand!.trim().isNotEmpty) {
+        final cmdParts = _parseCommand(serverConfig.customLaunchCommand!);
+        exe = cmdParts.first;
+        cmdArgs = [...cmdParts.sublist(1), ...args];
+      } else if (serverConfig.localInstallMethod == 'uvx') {
         final uvx = await LocalMcpRuntime.detectUv();
         if (uvx == null) {
           throw const LocalMcpException('uvx not found on PATH. Please install uv and restart the app.');
@@ -458,6 +463,9 @@ class LocalMcpRuntime {
   }
 
   static List<String> buildLaunchArgs(McpServerConfig server) {
+    if (server.customLaunchCommand != null && server.customLaunchCommand!.trim().isNotEmpty) {
+      return [];
+    }
     final isStandardMethod = server.localInstallMethod == 'uvx' ||
         server.localInstallMethod == 'pip' ||
         server.localInstallMethod == 'npm' ||

@@ -11,6 +11,7 @@ import 'widgets/settings_drawer.dart';
 import 'widgets/registered_tools_dialog.dart';
 import 'widgets/agent_inspector.dart';
 import 'widgets/llm_config_form.dart';
+import 'mcp_localizations.dart';
 
 /// Simple MIME-type lookup by file extension (replaces the `mime` package).
 String _mimeFromExtension(String name) {
@@ -72,7 +73,10 @@ class McpPlayground extends StatefulWidget {
   final List<McpLocalTool>? customLocalTools;
 
   /// Whether to disable opening the configuration dialog when LLM is not configured.
-  final bool disableConfiguDialog;
+  final bool disableConfigDialog;
+
+  /// Optional locale override ('en' or 'de').
+  final String? locale;
 
   const McpPlayground({
     super.key,
@@ -81,7 +85,8 @@ class McpPlayground extends StatefulWidget {
     this.initialLocalMcpServers,
     this.storageDelegate,
     this.customLocalTools,
-    this.disableConfiguDialog = false,
+    this.disableConfigDialog = false,
+    this.locale,
   });
 
   @override
@@ -90,6 +95,14 @@ class McpPlayground extends StatefulWidget {
 
 class _McpPlaygroundState extends State<McpPlayground> {
   late final PlaygroundController _controller;
+
+  McpPlaygroundLocalizations get _l10n {
+    if (widget.locale != null) {
+      return McpPlaygroundLocalizations(Locale(widget.locale!));
+    }
+    return McpPlaygroundLocalizations.of(context);
+  }
+
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -190,6 +203,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
           localInstallMethod: setup.method,
           localPackage: setup.packageOrServerName,
           localCommand: setup.installCommand,
+          customLaunchCommand: setup.launchCommand,
           localEnvVars: setup.envVars,
           isInstalled: false,
           enabled: true,
@@ -218,6 +232,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
         return _InitialMcpInstallProgressDialog(
           serversToInstall: serversToInstall,
           controller: _controller,
+          locale: widget.locale,
         );
       },
     );
@@ -1124,13 +1139,14 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     final tempActiveConfig = nextCustom ?? _controller.llmConfig;
     if (!tempActiveConfig.isConfigured) {
+      final l10n = _l10n;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please configure the LLM settings first.'),
+        SnackBar(
+          content: Text(l10n.get('pleaseConfigureLlm')),
           backgroundColor: Colors.orange,
         ),
       );
-      if (!widget.disableConfiguDialog) {
+      if (!widget.disableConfigDialog) {
         _showSettingsDialog();
       }
       return;
@@ -1901,6 +1917,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
   List<Widget> _buildAppBarActions(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 600;
+    final l10n = _l10n;
 
     if (isWide) {
       final showInspectorButton =
@@ -1908,34 +1925,34 @@ class _McpPlaygroundState extends State<McpPlayground> {
       return [
         IconButton(
           icon: const Icon(Icons.restart_alt),
-          tooltip: 'Reset Conversation & Setup',
+          tooltip: l10n.get('resetTooltip'),
           onPressed: _resetPlayground,
         ),
         IconButton(
           icon: const Icon(Icons.delete_sweep_outlined),
-          tooltip: 'Clear Inputs & Tools',
+          tooltip: l10n.get('clearTooltip'),
           onPressed: _clearSetupInputs,
         ),
         IconButton(
           icon: const Icon(Icons.bookmarks_outlined),
-          tooltip: 'Load Saved Setup Configurations',
+          tooltip: l10n.get('loadTooltip'),
           onPressed: _showLoadSetupsDialog,
         ),
         IconButton(
           icon: const Icon(Icons.bookmark_add_outlined),
-          tooltip: 'Save Current Setup Configuration',
+          tooltip: l10n.get('saveTooltip'),
           onPressed: _showSaveSetupDialog,
         ),
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
         IconButton(
           icon: const Icon(Icons.list_alt),
-          tooltip: 'Registered Tools Catalog',
+          tooltip: l10n.get('catalogTooltip'),
           onPressed: () => RegisteredToolsDialog.show(context, _controller),
         ),
         if (showInspectorButton)
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
-            tooltip: 'Agent Inspector',
+            tooltip: l10n.get('agentInspector'),
             onPressed: _showAgentInspectorDialog,
           ),
       ];
@@ -1945,12 +1962,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
     return [
       IconButton(
         icon: const Icon(Icons.restart_alt),
-        tooltip: 'Reset Conversation & Setup',
+        tooltip: l10n.get('resetTooltip'),
         onPressed: _resetPlayground,
       ),
       PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert),
-        tooltip: 'More Actions',
+        tooltip: l10n.get('moreActions'),
         onSelected: (val) {
           if (val == 'clear') {
             _clearSetupInputs();
@@ -1965,54 +1982,54 @@ class _McpPlaygroundState extends State<McpPlayground> {
           }
         },
         itemBuilder: (ctx) => [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'clear',
             child: Row(
               children: [
-                Icon(Icons.delete_sweep_outlined, size: 20),
-                SizedBox(width: 12),
-                Text('Clear Inputs & Tools'),
+                const Icon(Icons.delete_sweep_outlined, size: 20),
+                const SizedBox(width: 12),
+                Text(l10n.get('clearTooltip')),
               ],
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'load',
             child: Row(
               children: [
-                Icon(Icons.bookmarks_outlined, size: 20),
-                SizedBox(width: 12),
-                Text('Load Configuration'),
+                const Icon(Icons.bookmarks_outlined, size: 20),
+                const SizedBox(width: 12),
+                Text(l10n.get('loadSetup')),
               ],
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'save',
             child: Row(
               children: [
-                Icon(Icons.bookmark_add_outlined, size: 20),
-                SizedBox(width: 12),
-                Text('Save Configuration'),
+                const Icon(Icons.bookmark_add_outlined, size: 20),
+                const SizedBox(width: 12),
+                Text(l10n.get('saveSetup')),
               ],
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'catalog',
             child: Row(
               children: [
-                Icon(Icons.list_alt, size: 20),
-                SizedBox(width: 12),
-                Text('Tools Catalog'),
+                const Icon(Icons.list_alt, size: 20),
+                const SizedBox(width: 12),
+                Text(l10n.get('catalogTooltip')),
               ],
             ),
           ),
           if (_playgroundStarted)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'inspector',
               child: Row(
                 children: [
-                  Icon(Icons.analytics_outlined, size: 20),
-                  SizedBox(width: 12),
-                  Text('Agent Inspector'),
+                  const Icon(Icons.analytics_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('agentInspector')),
                 ],
               ),
             ),
@@ -2037,18 +2054,20 @@ class _McpPlaygroundState extends State<McpPlayground> {
             ?.name
         : null;
 
+    final l10n = _l10n;
+
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.menu),
-          tooltip: 'Menu',
+          tooltip: l10n.get('menu'),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         title: Text(
           loadedSetupName != null
-              ? 'Playground - $loadedSetupName'
-              : 'Playground',
+              ? '${l10n.get('playground')} - $loadedSetupName'
+              : l10n.get('playground'),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: _buildAppBarActions(context),
@@ -2059,9 +2078,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: theme.colorScheme.primary),
-              child: const Text(
-                'AI Agent Playground',
-                style: TextStyle(
+              child: Text(
+                l10n.get('agentPlayground'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -2070,20 +2089,21 @@ class _McpPlaygroundState extends State<McpPlayground> {
             ),
             ListTile(
               leading: const Icon(Icons.play_arrow),
-              title: const Text('Playground'),
+              title: Text(l10n.get('playground')),
               onTap: () {
                 Navigator.pop(context);
                 _resetPlayground();
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Playground Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSettingsDialog();
-              },
-            ),
+            if (!widget.disableConfigDialog)
+              ListTile(
+                leading: const Icon(Icons.settings),
+                title: Text(l10n.get('playgroundSettings')),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSettingsDialog();
+                },
+              ),
           ],
         ),
       ),
@@ -2176,10 +2196,12 @@ class _CustomProviderCache {
 class _InitialMcpInstallProgressDialog extends StatefulWidget {
   final List<LocalMcpServerSetup> serversToInstall;
   final PlaygroundController controller;
+  final String? locale;
 
   const _InitialMcpInstallProgressDialog({
     required this.serversToInstall,
     required this.controller,
+    this.locale,
   });
 
   @override
@@ -2190,13 +2212,27 @@ class _InitialMcpInstallProgressDialog extends StatefulWidget {
 class _InitialMcpInstallProgressDialogState
     extends State<_InitialMcpInstallProgressDialog> {
   String _currentServerName = '';
-  String _statusMessage = 'Starting installation...';
+  String _statusMessage = '';
   double? _progress;
   int _currentIndex = 0;
+
+  McpPlaygroundLocalizations get l10n {
+    if (widget.locale != null) {
+      return McpPlaygroundLocalizations(Locale(widget.locale!));
+    }
+    return McpPlaygroundLocalizations.of(context);
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _statusMessage = l10n.get('preparingRuntime');
+        });
+      }
+    });
     _runInstallations();
   }
 
@@ -2204,10 +2240,11 @@ class _InitialMcpInstallProgressDialogState
     for (int i = 0; i < widget.serversToInstall.length; i++) {
       final setup = widget.serversToInstall[i];
       if (!mounted) return;
+      final l10n = this.l10n;
       setState(() {
         _currentIndex = i;
         _currentServerName = setup.name;
-        _statusMessage = 'Initializing...';
+        _statusMessage = l10n.get('preparingRuntime');
         _progress = i / widget.serversToInstall.length;
       });
 
@@ -2227,12 +2264,15 @@ class _InitialMcpInstallProgressDialogState
 
       if (error != null) {
         if (mounted) {
+          final errMsg = l10n.locale.languageCode == 'de'
+              ? 'Installation von ${setup.name} fehlgeschlagen: $error'
+              : 'Failed to install ${setup.name}: $error';
           setState(() {
-            _statusMessage = 'Failed to install ${setup.name}: $error';
+            _statusMessage = errMsg;
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to install ${setup.name}: $error'),
+              content: Text(errMsg),
               backgroundColor: Colors.redAccent,
             ),
           );
@@ -2251,14 +2291,17 @@ class _InitialMcpInstallProgressDialogState
 
   @override
   Widget build(BuildContext context) {
+    final l10n = this.l10n;
     return AlertDialog(
-      title: const Text('Installing Local MCP Servers'),
+      title: Text(l10n.get('initializingServers')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Installing $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})',
+            l10n.locale.languageCode == 'de'
+                ? 'Installiere $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})'
+                : 'Installing $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),

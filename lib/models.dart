@@ -211,6 +211,7 @@ class McpServerConfig {
   final String? localInstallMethod; // 'pip' | 'uvx' | 'npm' | 'npx'
   final String? localPackage; // package name / pip requirements URL
   final String? localCommand; // manually generated command
+  final String? customLaunchCommand; // custom run command override
   final Map<String, String>? localEnvVars; // environment variables
   final bool isInstalled;
 
@@ -229,6 +230,7 @@ class McpServerConfig {
     this.localInstallMethod,
     this.localPackage,
     this.localCommand,
+    this.customLaunchCommand,
     this.localEnvVars,
     this.isInstalled = false,
   });
@@ -248,6 +250,7 @@ class McpServerConfig {
     String? localInstallMethod,
     String? localPackage,
     String? localCommand,
+    String? customLaunchCommand,
     Map<String, String>? localEnvVars,
     bool? isInstalled,
   }) {
@@ -266,6 +269,7 @@ class McpServerConfig {
       localInstallMethod: localInstallMethod ?? this.localInstallMethod,
       localPackage: localPackage ?? this.localPackage,
       localCommand: localCommand ?? this.localCommand,
+      customLaunchCommand: customLaunchCommand ?? this.customLaunchCommand,
       localEnvVars: localEnvVars ?? this.localEnvVars,
       isInstalled: isInstalled ?? this.isInstalled,
     );
@@ -286,6 +290,7 @@ class McpServerConfig {
         if (localInstallMethod != null) 'localInstallMethod': localInstallMethod,
         if (localPackage != null) 'localPackage': localPackage,
         if (localCommand != null) 'localCommand': localCommand,
+        if (customLaunchCommand != null) 'customLaunchCommand': customLaunchCommand,
         if (localEnvVars != null) 'localEnvVars': localEnvVars,
         'isInstalled': isInstalled,
       };
@@ -306,6 +311,7 @@ class McpServerConfig {
       localInstallMethod: json['localInstallMethod'] as String?,
       localPackage: json['localPackage'] as String?,
       localCommand: json['localCommand'] as String?,
+      customLaunchCommand: json['customLaunchCommand'] as String?,
       localEnvVars: json['localEnvVars'] != null
           ? Map<String, String>.from(json['localEnvVars'] as Map)
           : null,
@@ -785,6 +791,7 @@ class LocalMcpServerSetup {
   final String? installCommand;
   final bool reinstall;
   final Map<String, String>? envVars;
+  final String? launchCommand;
 
   const LocalMcpServerSetup({
     required this.name,
@@ -795,5 +802,6 @@ class LocalMcpServerSetup {
     this.installCommand,
     this.reinstall = false,
     this.envVars,
+    this.launchCommand,
   });
 }

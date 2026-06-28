@@ -8,7 +8,7 @@ An interactive AI Agent Playground widget for Flutter — connect to any LLM pro
 
 - **Multi-LLM support** – OpenAI, Anthropic Claude, Google Gemini, Ollama (local), Mistral AI, and any OpenAI-compatible endpoint.
 - **HTTP MCP Server registry** – Browse [PulseMCP](https://pulsemcp.com) and [Smithery](https://smithery.ai) catalogs or add custom remote MCP servers.
-- **Dart-native local tools** – Ship built-in weather, SSH/SFTP, chart-generation tools; extend with your own `McpLocalTool` implementations.
+- **Dart-native local tools** – Able to add custom Dart-native local MCP tools; see examples in `example_ui` (weather, SSH, chart-generation).
 - **Agentic tool loop** – Automatic iterative tool calling with duplicate-call detection, iteration limits, and safety guards.
 - **Save/Load configurations** – Persist LLM settings, tool selections, system prompts, and server lists via `SharedPreferences` or a custom `McpPlaygroundStorageDelegate`.
 - **Agent Inspector** – Side-by-side conversation + internal state inspector for debugging agent behavior.
@@ -35,7 +35,7 @@ import 'package:mcp_playground_flutter/mcp_playground_flutter.dart';
 
 ## 📦 Widget API
 
-### [`McpPlayground`](lib/mcp_playground.dart:55)
+### [`McpPlayground`](lib/mcp_playground.dart:56)
 
 The main widget. Drop it into your app to get a full AI playground UI.
 
@@ -43,8 +43,11 @@ The main widget. Drop it into your app to get a full AI playground UI.
 |-----------|------|---------|-------------|
 | `initialLlmConfig` | [`LlmConfig?`](lib/models.dart:65) | `null` | Default LLM provider, model, API key, and hyperparameters. Falls back to persisted settings. |
 | `initialServers` | `List<McpServerConfig>?` | `null` | Pre-configured list of HTTP MCP servers to connect to on startup. |
+| `initialLocalMcpServers` | `List<LocalMcpServerSetup>?` | `null` | Pre-configured list of local Node.js or Python MCP servers to auto-initialize/install. |
 | `storageDelegate` | `McpPlaygroundStorageDelegate?` | `null` | Custom persistence layer for settings. Uses `SharedPreferences` if omitted. |
 | `customLocalTools` | `List<McpLocalTool>?` | `null` | Custom Dart-native tool implementations. See [`McpLocalTool`](lib/local_tools.dart:4). |
+| `disableConfigDialog` | `bool` | `false` | Disable opening the settings dialog when LLM is not configured. |
+| `locale` | `String?` | `null` | Optional explicit locale override ('en' or 'de'). Defaults to system language. |
 
 #### Basic usage
 
@@ -199,6 +202,28 @@ Abstract class for custom persistence. Implement this to store settings in your 
 
 ---
 
+## 🖥️ Local MCP Servers (Desktop Stdio Transport)
+
+On desktop platforms (macOS, Windows, Linux), you can register, install, and run **Node.js** and **Python** MCP servers directly as child subprocesses using stdio transport.
+
+### Host Restrictions & Requirements:
+- **Desktop Only**: Running subprocesses (local node/python MCP servers) via `dart:io` is **not supported on Web or Mobile (Android/iOS)**.
+- **Node.js & Python Tools**: The host system must have the target runtime installed and present in the system PATH:
+  - For Node.js servers (e.g. `npx`, `npm`), **Node.js 18+** is required.
+  - For Python servers (e.g. `pip`, `uvx`), **Python 3** and the **`uv`** tool (for `uvx` servers) are required.
+- **Auto-Installation**: When using `initialLocalMcpServers`, if any server environment is missing (e.g. python virtualenv is not initialized), the app will display a modal progress dialog showing the setup progress (creating `.venv`, installing packages) on startup.
+
+---
+
+## 📁 Examples
+
+This repository contains two example projects showing different integration patterns:
+
+- **[example_ui](examples/example_ui)**: A **platform-independent** example that runs on all platforms (Web, Mobile, Desktop). It demonstrates registering remote HTTP MCP servers and built-in Dart-native tools (such as Weather and SSH/SFTP tools) without host subprocess dependencies.
+- **[example_lite](examples/example_lite)**: A **desktop-specific** example showing how to run in headless/pre-configured mode. It configures default LLM settings, bypasses the settings drawer on startup using `disableConfigDialog: true`, and pre-loads local `Git` and `Filesystem` MCP servers using `initialLocalMcpServers`.
+
+---
+
 ## ⚠️ Web Mode Restrictions & CORS
 
 When running on **Flutter Web**, the browser's [same-origin policy](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy) and **CORS** (Cross-Origin Resource Sharing) restrictions apply to HTTP MCP server connections.
@@ -213,7 +238,7 @@ When running on **Flutter Web**, the browser's [same-origin policy](https://deve
 
 2. **Localhost / private network servers** – Browsers may block requests to `localhost` or private IPs from HTTPS origins unless the site is also served over `localhost`. Consider using a CORS proxy or running the app as a PWA (Progressive Web App) with appropriate headers.
 
-3. **`dart:io`-dependent tools** – Local tools that depend on `dart:io` (e.g., SSH/SFTP tools, file system access) **will not work on web**. WebFlutter runs on `dart:html` and lacks socket-level APIs. Only pure-Dart and HTTP-based tools function in the browser.
+3. **`dart:io`-dependent tools & Local Servers** – Local tools that depend on `dart:io` (e.g., SSH/SFTP tools, file system access) and local Node/Python MCP subprocess servers **will not work on web**. WebFlutter runs on `dart:html` and lacks socket-level APIs. Only pure-Dart and HTTP-based tools function in the browser.
 
 4. **Workarounds:**
    - Configure your MCP server with proper CORS middleware (e.g., `cors` npm package for Node.js).
@@ -224,7 +249,7 @@ When running on **Flutter Web**, the browser's [same-origin policy](https://deve
 
 ## 🗺️ Roadmap
 
-- **Desktop and Native MCP Server registration** — Register and spawn **Node.js** and **Python** MCP servers as subprocesses on desktop platforms (macOS, Windows, Linux) using `dart:io`. This will enable local, non-HTTP MCP servers (stdio transport) to work seamlessly alongside HTTP remote servers.
+- **Embedded Model Support** — Support running lightweight models locally on the device (e.g. via ONNX or TensorFlow Lite) for private offline usage.
 - **Improved Agent Inspector** — Enhanced debugging with execution traces, token usage breakdowns, and step-by-step replay.
 - **Plugin ecosystem** — Allow third-party tool packages to be discovered and registered at build time.
 - **Streaming responses** — Real-time streaming LLM output in the chat UI.
