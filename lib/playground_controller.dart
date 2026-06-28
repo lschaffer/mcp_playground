@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -306,8 +308,15 @@ class PlaygroundController extends ChangeNotifier {
   Future<void> _syncMcpServers() async {
     await _mcpManager.disconnectAll();
     _mcpManager.clear();
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     final activeServers = _servers
-        .where((s) => s.enabled && (s.isLocal || s.url.trim().isNotEmpty))
+        .where((s) {
+          if (!s.enabled) return false;
+          if (s.isLocal) {
+            return isDesktop;
+          }
+          return s.url.trim().isNotEmpty;
+        })
         .toList();
 
     // Re-register external / local servers

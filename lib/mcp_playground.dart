@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -180,6 +182,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
   }
 
   Future<void> _checkAndInstallInitialLocalMcpServers() async {
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    if (!isDesktop) return;
+
     // Wait until controller is done loading from storage
     while (_controller.isLoading) {
       await Future.delayed(const Duration(milliseconds: 100));
