@@ -2006,21 +2006,23 @@ class _McpPlaygroundState extends State<McpPlayground> {
           tooltip: l10n.get('resetTooltip'),
           onPressed: _resetPlayground,
         ),
-        IconButton(
-          icon: const Icon(Icons.delete_sweep_outlined),
-          tooltip: l10n.get('clearTooltip'),
-          onPressed: _clearSetupInputs,
-        ),
-        IconButton(
-          icon: const Icon(Icons.bookmarks_outlined),
-          tooltip: l10n.get('loadTooltip'),
-          onPressed: _showLoadSetupsDialog,
-        ),
-        IconButton(
-          icon: const Icon(Icons.bookmark_add_outlined),
-          tooltip: l10n.get('saveTooltip'),
-          onPressed: _showSaveSetupDialog,
-        ),
+        if (!_playgroundStarted) ...[
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: l10n.get('clearTooltip'),
+            onPressed: _clearSetupInputs,
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmarks_outlined),
+            tooltip: l10n.get('loadTooltip'),
+            onPressed: _showLoadSetupsDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark_add_outlined),
+            tooltip: l10n.get('saveTooltip'),
+            onPressed: _showSaveSetupDialog,
+          ),
+        ],
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
         IconButton(
           icon: const Icon(Icons.list_alt),
@@ -2060,36 +2062,38 @@ class _McpPlaygroundState extends State<McpPlayground> {
           }
         },
         itemBuilder: (ctx) => [
-          PopupMenuItem(
-            value: 'clear',
-            child: Row(
-              children: [
-                const Icon(Icons.delete_sweep_outlined, size: 20),
-                const SizedBox(width: 12),
-                Text(l10n.get('clearTooltip')),
-              ],
+          if (!_playgroundStarted) ...[
+            PopupMenuItem(
+              value: 'clear',
+              child: Row(
+                children: [
+                  const Icon(Icons.delete_sweep_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('clearTooltip')),
+                ],
+              ),
             ),
-          ),
-          PopupMenuItem(
-            value: 'load',
-            child: Row(
-              children: [
-                const Icon(Icons.bookmarks_outlined, size: 20),
-                const SizedBox(width: 12),
-                Text(l10n.get('loadSetup')),
-              ],
+            PopupMenuItem(
+              value: 'load',
+              child: Row(
+                children: [
+                  const Icon(Icons.bookmarks_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('loadSetup')),
+                ],
+              ),
             ),
-          ),
-          PopupMenuItem(
-            value: 'save',
-            child: Row(
-              children: [
-                const Icon(Icons.bookmark_add_outlined, size: 20),
-                const SizedBox(width: 12),
-                Text(l10n.get('saveSetup')),
-              ],
+            PopupMenuItem(
+              value: 'save',
+              child: Row(
+                children: [
+                  const Icon(Icons.bookmark_add_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('saveSetup')),
+                ],
+              ),
             ),
-          ),
+          ],
           PopupMenuItem(
             value: 'catalog',
             child: Row(
