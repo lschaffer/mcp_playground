@@ -1,0 +1,18 @@
+# mcp_playground_flutter
+
+> An interactive AI Agent Playground widget for Flutter — connect to any LLM provider, register local Dart-native tools and remote HTTP MCP servers, and prototype agentic workflows in a chat-based UI.
+
+## Core Files
+
+- [README.md](file:///c:/projects/ls/mcp_playground/README.md): Detailed installation instructions, widget API documentation, and usage examples.
+- [lib/mcp_playground.dart](file:///c:/projects/ls/mcp_playground/lib/mcp_playground.dart): Main playground widget and layout container.
+- [lib/models.dart](file:///c:/projects/ls/mcp_playground/lib/models.dart): Configuration schemas (`LlmConfig`, `McpServerConfig`), JSON-RPC 2.0 schemas, and UI chat models.
+- [lib/playground_controller.dart](file:///c:/projects/ls/mcp_playground/lib/playground_controller.dart): State manager orchestrating agent loops, tool executions, and persistence.
+- [lib/mcp_client.dart](file:///c:/projects/ls/mcp_playground/lib/mcp_client.dart): Client for HTTP/HTTPS MCP connections, SSE parsing, and orchestrating multiple active MCP servers.
+- [lib/llm_service.dart](file:///c:/projects/ls/mcp_playground/lib/llm_service.dart): Provider integrations with Anthropic, OpenAI, Gemini, Ollama, and custom endpoints.
+- [lib/local_tools.dart](file:///c:/projects/ls/mcp_playground/lib/local_tools.dart): Dart-native local fallback tools (e.g. Weather, SSH, and Chart-generation).
+
+## Implementation Examples
+
+- [example/lib/main.dart](file:///c:/projects/ls/mcp_playground/example/lib/main.dart): Showcase application containing pre-configured local tools and local stdio MCP servers (Git, Filesystem).
+- [pubspec.yaml](file:///c:/projects/ls/mcp_playground/pubspec.yaml): Project dependencies and configuration.
