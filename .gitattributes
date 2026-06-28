@@ -1,0 +1,9 @@
+* text=auto
+
+# Define binary files to prevent Git from altering line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
