@@ -46,10 +46,10 @@ class McpPlaygroundScreen extends StatelessWidget {
     // These tools are passed via customLocalTools and demonstrate how
     // consumers can add their own Dart-native tool implementations.
     final sshDefaults = <String, dynamic>{
-      'host': EnvLoader.get('LOCAL_MCP_SSH_HOST', defaultValue: ''),
+      'host': EnvLoader.get('LOCAL_MCP_SSH_HOST'),
       'port': int.tryParse(EnvLoader.get('LOCAL_MCP_SSH_PORT')) ?? 22,
-      'username': EnvLoader.get('LOCAL_MCP_SSH_USER', defaultValue: ''),
-      'password': EnvLoader.get('LOCAL_MCP_SSH_PASSW', defaultValue: ''),
+      'username': EnvLoader.get('LOCAL_MCP_SSH_USER'),
+      'password': EnvLoader.get('LOCAL_MCP_SSH_PASSW'),
     };
 
     final List<McpLocalTool> demoLocalTools = [
