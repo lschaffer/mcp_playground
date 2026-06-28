@@ -2,6 +2,9 @@
 
 An interactive AI Agent Playground widget for Flutter — connect to any LLM provider, register **local Dart-native tools** and **remote HTTP MCP servers**, and prototype agentic workflows in a chat-based UI.
 
+> [!TIP]
+> A full working multiplatform app **Tealkit** based on the features of this widget is available in Play Store, App Store, and Windows Store. See [github.com/lschaffer/tealkit](https://github.com/lschaffer/tealkit).
+
 ---
 
 ## ✨ Features
