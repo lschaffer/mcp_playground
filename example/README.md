@@ -13,11 +13,27 @@ Here is how the playground and its configuration interfaces look:
 ### LLM Provider Setup
 ![LLM Config](../screenshots/example_ui/playground_config_llm.png)
 
+### Remote MCP Server configuration
+![LLM Config](../screenshots/example_ui/playground_config_remote_mcp.png)
+
+### Local MCP Server configuration
+![LLM Config](../screenshots/example_ui/playground_config_local_mcp.png)
+
+### Local MCP Server add custom configuration
+![LLM Config](../screenshots/example_ui/playground_config_add_local_mcp.png)
+
+
 ### Local MCP Subprocesses Setup (Desktop Mode)
 ![Local MCP Config](../screenshots/example_ui/playground_config_local_mcp.png)
 
-### Filesystem MCP Server Integration
+### Filesystem (nodejs) MCP Server Test
 ![Filesystem MCP Test](../screenshots/example_ui/filesystem_mcp_test.png)
+
+### Git (python) MCP Server Test
+![Git MCP Test](../screenshots/example_ui/git_mcp_test.png)
+
+### Custom (dart) MCP Servers (Weather, Chart) Test
+![Custom MCP Test](../screenshots/example_ui/local_dart_mcp_test.png)
 
 ---
 
