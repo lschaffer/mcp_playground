@@ -445,6 +445,15 @@ class MultiMCPManager extends ChangeNotifier {
     }
   }
 
+  void clear() {
+    for (final c in _clients) {
+      c.client.removeListener(notifyListeners);
+      c.client.dispose();
+    }
+    _clients.clear();
+    notifyListeners();
+  }
+
   List<MCPClientDef> get clients => List.unmodifiable(_clients);
   bool get isConnected => _clients.any((c) => c.isConnected);
 

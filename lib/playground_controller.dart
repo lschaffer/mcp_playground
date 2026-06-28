@@ -286,6 +286,7 @@ class PlaygroundController extends ChangeNotifier {
 
   Future<void> _syncMcpServers() async {
     await _mcpManager.disconnectAll();
+    _mcpManager.clear();
     final activeServers = _servers
         .where((s) => s.enabled && (s.isLocal || s.url.trim().isNotEmpty))
         .toList();

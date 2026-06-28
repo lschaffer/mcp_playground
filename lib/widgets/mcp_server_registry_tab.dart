@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models.dart';
 import '../playground_controller.dart';
 import '../local_mcp_client.dart';
+import 'server_tools_dialog.dart';
 
 class McpServerRegistryTab extends StatefulWidget {
   final PlaygroundController controller;
@@ -329,6 +330,12 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                                   },
                                 ),
                                 IconButton(
+                                  icon: const Icon(Icons.list_alt_outlined),
+                                  tooltip: 'Discover Tools',
+                                  onPressed: () =>
+                                      ServerToolsDialog.show(context, server, widget.controller),
+                                ),
+                                IconButton(
                                   icon: const Icon(Icons.edit_outlined),
                                   onPressed: () => _showEditDialog(context, server),
                                 ),
@@ -542,14 +549,32 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               if (isInstalled) ...[
-                                ElevatedButton.icon(
-                                  onPressed: () => _confirmDelete(installedServer!),
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Remove'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red[900],
-                                    foregroundColor: Colors.white,
-                                  ),
+                                Row(
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () => _confirmDelete(installedServer!),
+                                      icon: const Icon(Icons.delete_outline),
+                                      label: const Text('Remove'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red[900],
+                                        foregroundColor: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: () => ServerToolsDialog.show(
+                                        context,
+                                        installedServer!,
+                                        widget.controller,
+                                      ),
+                                      icon: const Icon(Icons.list_alt_outlined),
+                                      label: const Text('Discover Tools'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFF7C3AED),
+                                        side: const BorderSide(color: Color(0xFF7C3AED)),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 Row(
                                   children: [
@@ -690,8 +715,8 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
       ),
     );
 
-    await LocalMcpRuntime.uninstall(server);
     widget.controller.removeServer(server.id);
+    await LocalMcpRuntime.uninstall(server);
 
     if (!mounted) return;
     Navigator.pop(context); // Close loader

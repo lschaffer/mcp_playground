@@ -68,7 +68,12 @@ class LocalMCPClient extends MCPClient {
         }
         exe = LocalMcpRuntime.siblingTool(node, 'npx');
         cmdArgs = ['-y', serverConfig.localPackage ?? serverConfig.name, ...args];
-      } else if (serverConfig.localCommand != null && serverConfig.localCommand!.trim().isNotEmpty) {
+      } else if (serverConfig.localCommand != null &&
+          serverConfig.localCommand!.trim().isNotEmpty &&
+          serverConfig.localInstallMethod != 'pip' &&
+          serverConfig.localInstallMethod != 'uvx' &&
+          serverConfig.localInstallMethod != 'npm' &&
+          serverConfig.localInstallMethod != 'npx') {
         // Parse custom user command
         final cmdParts = _parseCommand(serverConfig.localCommand!);
         exe = cmdParts.first;
@@ -77,7 +82,14 @@ class LocalMCPClient extends MCPClient {
         // Default to pip / python virtual env
         final pythonExe = LocalMcpRuntime.pythonVenvExe(dir);
         if (!await File(pythonExe).exists()) {
-          throw const LocalMcpException('Virtual environment executable is missing. Please run install first.');
+          _log('Virtual environment executable is missing. Initializing .venv...');
+          final error = await LocalMcpRuntime.install(serverConfig);
+          if (error != null) {
+            throw LocalMcpException('Virtual environment initialization failed: $error');
+          }
+          if (!await File(pythonExe).exists()) {
+            throw const LocalMcpException('Virtual environment executable is still missing after installation.');
+          }
         }
         exe = pythonExe;
         final entry = (serverConfig.localPackage ?? '').trim();
@@ -226,7 +238,12 @@ class LocalMCPClient extends MCPClient {
     _isConnectedLocal = false;
     _stdoutSub?.cancel();
     _stdoutSub = null;
-    _process?.kill();
+    if (_process != null) {
+      _process!.kill();
+      try {
+        await _process!.exitCode.timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
     _process = null;
     _availableToolsLocal = [];
     _log('Disconnected local server: ${serverConfig.name}');
@@ -441,7 +458,11 @@ class LocalMcpRuntime {
   }
 
   static List<String> buildLaunchArgs(McpServerConfig server) {
-    if (server.localCommand != null && server.localCommand!.contains(' ')) {
+    final isStandardMethod = server.localInstallMethod == 'uvx' ||
+        server.localInstallMethod == 'pip' ||
+        server.localInstallMethod == 'npm' ||
+        server.localInstallMethod == 'npx';
+    if (!isStandardMethod && server.localCommand != null && server.localCommand!.contains(' ')) {
       // Arguments are already baked into custom run command
       return [];
     }

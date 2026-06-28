@@ -775,3 +775,25 @@ class SavedPlaygroundSetup {
     );
   }
 }
+
+class LocalMcpServerSetup {
+  final String name;
+  final String? launchArguments;
+  final String type; // 'python' | 'nodejs'
+  final String method; // 'pip' | 'uvx' | 'npm' | 'npx'
+  final String packageOrServerName;
+  final String? installCommand;
+  final bool reinstall;
+  final Map<String, String>? envVars;
+
+  const LocalMcpServerSetup({
+    required this.name,
+    this.launchArguments,
+    required this.type,
+    required this.method,
+    required this.packageOrServerName,
+    this.installCommand,
+    this.reinstall = false,
+    this.envVars,
+  });
+}

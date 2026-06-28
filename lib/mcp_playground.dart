@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 import 'models.dart';
 import 'local_tools.dart';
 import 'playground_controller.dart';
+import 'local_mcp_client.dart';
+import 'llm_service.dart';
 import 'widgets/chat_bubble.dart';
 import 'widgets/settings_drawer.dart';
 import 'widgets/registered_tools_dialog.dart';
@@ -59,6 +61,9 @@ class McpPlayground extends StatefulWidget {
   /// Default list of HTTP/HTTPS MCP servers to connect to.
   final List<McpServerConfig>? initialServers;
 
+  /// Optional list of local MCP servers to auto-initialize/install.
+  final List<LocalMcpServerSetup>? initialLocalMcpServers;
+
   /// Optional delegate to customize settings save/load operations.
   /// Falls back to SharedPreferences if null.
   final McpPlaygroundStorageDelegate? storageDelegate;
@@ -66,12 +71,17 @@ class McpPlayground extends StatefulWidget {
   /// Custom list of internal, Dart-native tools to register.
   final List<McpLocalTool>? customLocalTools;
 
+  /// Whether to disable opening the configuration dialog when LLM is not configured.
+  final bool disableConfiguDialog;
+
   const McpPlayground({
     super.key,
     this.initialLlmConfig,
     this.initialServers,
+    this.initialLocalMcpServers,
     this.storageDelegate,
     this.customLocalTools,
+    this.disableConfiguDialog = false,
   });
 
   @override
@@ -95,6 +105,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
   final _initialPromptCtrl = TextEditingController();
   bool _chatMode = false;
   bool _stopAfterToolCall = false;
+  bool _isGeneratingSystemPrompt = false;
 
   // Custom LLM Override state
   bool _useCustomLlm = false;
@@ -130,6 +141,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
       storageDelegate: widget.storageDelegate,
     );
     _controller.addListener(_onStateChange);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkAndInstallInitialLocalMcpServers();
+    });
   }
 
   void _onStateChange() {
@@ -139,6 +154,73 @@ class _McpPlaygroundState extends State<McpPlayground> {
         Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
       }
     }
+  }
+
+  Future<void> _checkAndInstallInitialLocalMcpServers() async {
+    // Wait until controller is done loading from storage
+    while (_controller.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    final localServersSetup = widget.initialLocalMcpServers;
+    if (localServersSetup == null || localServersSetup.isEmpty) return;
+
+    final List<LocalMcpServerSetup> serversToInstall = [];
+    final List<McpServerConfig> configsToRegister = [];
+
+    for (final setup in localServersSetup) {
+      final existingIdx = _controller.servers.indexWhere((s) => s.name == setup.name);
+
+      McpServerConfig? config;
+      bool needsInstall = false;
+
+      if (existingIdx != -1) {
+        config = _controller.servers[existingIdx];
+        if (setup.reinstall || !config.isInstalled) {
+          needsInstall = true;
+        }
+      } else {
+        needsInstall = true;
+        config = McpServerConfig(
+          id: const Uuid().v4(),
+          name: setup.name,
+          url: setup.launchArguments ?? '',
+          isLocal: true,
+          localType: setup.type,
+          localInstallMethod: setup.method,
+          localPackage: setup.packageOrServerName,
+          localCommand: setup.installCommand,
+          localEnvVars: setup.envVars,
+          isInstalled: false,
+          enabled: true,
+        );
+        configsToRegister.add(config);
+      }
+
+      if (needsInstall) {
+        serversToInstall.add(setup);
+      }
+    }
+
+    // Register all configs that are not in database yet
+    for (final config in configsToRegister) {
+      await _controller.addServer(config);
+    }
+
+    if (serversToInstall.isEmpty) return;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return _InitialMcpInstallProgressDialog(
+          serversToInstall: serversToInstall,
+          controller: _controller,
+        );
+      },
+    );
   }
 
   void _scrollToBottom() {
@@ -617,7 +699,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
   void _resetPlayground() {
     setState(() {
       _playgroundStarted = false;
-      _loadedSetupId = null;
       _controller.clearChat();
       _attachments.clear();
     });
@@ -790,7 +871,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
                           color: Colors.red,
                         ),
                         onPressed: () {
+                          final wasLoaded = _loadedSetupId == setup.id;
                           _controller.deleteSetup(setup.id);
+                          if (wasLoaded) {
+                            setState(() {
+                              _loadedSetupId = null;
+                            });
+                          }
                           Navigator.pop(ctx);
                           _showLoadSetupsDialog();
                         },
@@ -913,6 +1000,101 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
+  LlmConfig _getActiveLlmConfig() {
+    if (_useCustomLlm) {
+      return LlmConfig(
+        provider: _customProvider,
+        model: _customModelCtrl.text.trim(),
+        apiKey: _customApiKeyCtrl.text.trim(),
+        baseUrl: _customBaseUrlCtrl.text.trim(),
+        temperature: double.tryParse(_customTempCtrl.text.trim()) ?? 0.2,
+        maxTokens: int.tryParse(_customMaxTokensCtrl.text.trim()) ?? 0,
+        maxToolOutputSize:
+            int.tryParse(_customMaxToolOutputSizeCtrl.text.trim()) ?? 2560000,
+        tokenWarningThreshold:
+            int.tryParse(_customTokenWarningThresholdCtrl.text.trim()) ??
+            1500000,
+        topK: int.tryParse(_customTopKCtrl.text.trim()),
+        topP: double.tryParse(_customTopPCtrl.text.trim()),
+        repeatPenalty: double.tryParse(_customRepeatPenaltyCtrl.text.trim()),
+        seed: int.tryParse(_customSeedCtrl.text.trim()),
+        thinking: _customThinking,
+        isSlm: _customIsSlm,
+        isMultiModal: _customIsMultiModal,
+        useNativeToolCall: _customUseNativeTool,
+      );
+    }
+    return _controller.llmConfig;
+  }
+
+  Future<void> _generateSystemPrompt() async {
+    final activeConfig = _getActiveLlmConfig();
+    if (!activeConfig.isConfigured) return;
+
+    setState(() {
+      _isGeneratingSystemPrompt = true;
+    });
+
+    try {
+      final groups = _getToolsetGroups();
+      final enabledGroups = groups.where((g) => _isToolsetEnabled(g)).toList();
+      
+      String promptText = 'Write a concise, professional system prompt (maximum 2-3 sentences) for an AI assistant. ';
+      if (enabledGroups.isNotEmpty) {
+        final toolDetails = enabledGroups.map((g) => '${g.name}: ${g.description}').join('\n');
+        promptText += 'The assistant is equipped with the following toolsets:\n$toolDetails\n\n';
+        promptText += 'Focus on how the assistant should behave, be direct, and optimize usage of these tools. ';
+      } else {
+        promptText += 'Focus on being helpful, direct, and clear. ';
+      }
+      promptText += 'Respond ONLY with the generated system prompt text, with no introduction, quotes, or explanations.';
+
+      final messages = [
+        ChatMessage(
+          id: const Uuid().v4(),
+          content: promptText,
+          role: ChatRole.user,
+          timestamp: DateTime.now(),
+        ),
+      ];
+
+      final response = await LLMService.generate(
+        config: activeConfig,
+        messages: messages,
+        tools: const [],
+        systemPrompt: 'You are a prompt engineering expert. You output only the final requested prompt text with no markdown formatting or surrounding quotes.',
+      );
+
+      if (response.text.isNotEmpty && mounted) {
+        setState(() {
+          String text = response.text.trim();
+          if (text.startsWith('"') && text.endsWith('"')) {
+            text = text.substring(1, text.length - 1);
+          }
+          if (text.startsWith("'") && text.endsWith("'")) {
+            text = text.substring(1, text.length - 1);
+          }
+          _systemPromptCtrl.text = text.trim();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate system prompt: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingSystemPrompt = false;
+        });
+      }
+    }
+  }
+
   void _startPlayground() {
     // 1. Check if LLM is configured
     LlmConfig? nextCustom;
@@ -948,7 +1130,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
           backgroundColor: Colors.orange,
         ),
       );
-      _showSettingsDialog();
+      if (!widget.disableConfiguDialog) {
+        _showSettingsDialog();
+      }
       return;
     }
 
@@ -1108,10 +1292,28 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
           // System Prompt Field
           if (!_chatMode) ...[
-            const Text(
-              'System Prompt',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'System Prompt',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                if (_getActiveLlmConfig().isConfigured)
+                  IconButton(
+                    icon: _isGeneratingSystemPrompt
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome_outlined, size: 20),
+                    tooltip: 'Generate System Prompt',
+                    onPressed: _isGeneratingSystemPrompt ? null : _generateSystemPrompt,
+                  ),
+              ],
             ),
+            const SizedBox(height: 4),
             TextFormField(
               controller: _systemPromptCtrl,
               maxLines: 5,
@@ -1579,6 +1781,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
     setState(() {
       _systemPromptCtrl.clear();
       _initialPromptCtrl.clear();
+      _loadedSetupId = null;
 
       final allTools = _getToolsetGroups()
           .expand((g) => g.tools)
@@ -1827,6 +2030,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
         ? _buildConversationView(theme)
         : _buildSetupView(theme);
 
+    final loadedSetupName = _loadedSetupId != null
+        ? _controller.savedSetups
+            .cast<SavedPlaygroundSetup?>()
+            .firstWhere((s) => s?.id == _loadedSetupId, orElse: () => null)
+            ?.name
+        : null;
+
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
@@ -1835,9 +2045,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
           tooltip: 'Menu',
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
-        title: const Text(
-          'Playground',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          loadedSetupName != null
+              ? 'Playground - $loadedSetupName'
+              : 'Playground',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: _buildAppBarActions(context),
       ),
@@ -1959,4 +2171,102 @@ class _CustomProviderCache {
     required this.apiKey,
     required this.baseUrl,
   });
+}
+
+class _InitialMcpInstallProgressDialog extends StatefulWidget {
+  final List<LocalMcpServerSetup> serversToInstall;
+  final PlaygroundController controller;
+
+  const _InitialMcpInstallProgressDialog({
+    required this.serversToInstall,
+    required this.controller,
+  });
+
+  @override
+  State<_InitialMcpInstallProgressDialog> createState() =>
+      _InitialMcpInstallProgressDialogState();
+}
+
+class _InitialMcpInstallProgressDialogState
+    extends State<_InitialMcpInstallProgressDialog> {
+  String _currentServerName = '';
+  String _statusMessage = 'Starting installation...';
+  double? _progress;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _runInstallations();
+  }
+
+  Future<void> _runInstallations() async {
+    for (int i = 0; i < widget.serversToInstall.length; i++) {
+      final setup = widget.serversToInstall[i];
+      if (!mounted) return;
+      setState(() {
+        _currentIndex = i;
+        _currentServerName = setup.name;
+        _statusMessage = 'Initializing...';
+        _progress = i / widget.serversToInstall.length;
+      });
+
+      // Find the server config in the controller
+      final config = widget.controller.servers.firstWhere((s) => s.name == setup.name);
+
+      final error = await LocalMcpRuntime.install(
+        config,
+        onProgress: (p) {
+          if (mounted) {
+            setState(() {
+              _statusMessage = p.message;
+            });
+          }
+        },
+      );
+
+      if (error != null) {
+        if (mounted) {
+          setState(() {
+            _statusMessage = 'Failed to install ${setup.name}: $error';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to install ${setup.name}: $error'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      } else {
+        // Mark server as installed!
+        final updatedConfig = config.copyWith(isInstalled: true);
+        await widget.controller.updateServer(updatedConfig);
+      }
+    }
+
+    if (mounted) {
+      Navigator.pop(context); // Close the dialog
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Installing Local MCP Servers'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Installing $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(_statusMessage),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(value: _progress),
+        ],
+      ),
+    );
+  }
 }
