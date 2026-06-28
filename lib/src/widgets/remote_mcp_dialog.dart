@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
-import '../models.dart';
-import '../playground_controller.dart';
-import '../mcp_client.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
+import '../../mcp_client.dart';
 
 class RemoteMcpDialog extends StatefulWidget {
   final PlaygroundController controller;

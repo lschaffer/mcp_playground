@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:file_picker/file_picker.dart';
-import '../models.dart';
-import '../playground_controller.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;

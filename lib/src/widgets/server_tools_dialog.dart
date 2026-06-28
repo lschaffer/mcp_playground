@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models.dart';
-import '../playground_controller.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
 
 class ServerToolsDialog extends StatelessWidget {
   final McpServerConfig server;

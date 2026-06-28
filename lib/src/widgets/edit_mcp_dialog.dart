@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models.dart';
-import '../playground_controller.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
 
 class EditMcpServerDialog extends StatefulWidget {
   final McpServerConfig server;

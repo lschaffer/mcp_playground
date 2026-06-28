@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import '../models.dart';
-import '../llm_service.dart';
+import '../../models.dart';
+import '../../llm_service.dart';
 
 /// Reusable widget for base LLM configuration: Provider, Model (with autocomplete),
 /// API Key, Base URL, Fetch/Refresh Models button, and Test Connection button.

@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'mcp_client.dart';
-import 'models.dart';
+import '../mcp_client.dart';
+import '../models.dart';
 
 /// Stdio JSON-RPC 2.0 Client for local MCP servers running as child processes.
 class LocalMCPClient extends MCPClient {

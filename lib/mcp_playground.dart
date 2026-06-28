@@ -4,14 +4,14 @@ import 'package:uuid/uuid.dart';
 import 'models.dart';
 import 'local_tools.dart';
 import 'playground_controller.dart';
-import 'local_mcp_client.dart';
+import 'src/local_mcp_client.dart';
 import 'llm_service.dart';
-import 'widgets/chat_bubble.dart';
-import 'widgets/settings_drawer.dart';
-import 'widgets/registered_tools_dialog.dart';
-import 'widgets/agent_inspector.dart';
-import 'widgets/llm_config_form.dart';
-import 'mcp_localizations.dart';
+import 'src/widgets/chat_bubble.dart';
+import 'src/widgets/settings_drawer.dart';
+import 'src/widgets/registered_tools_dialog.dart';
+import 'src/widgets/agent_inspector.dart';
+import 'src/widgets/llm_config_form.dart';
+import 'src/mcp_localizations.dart';
 
 /// Simple MIME-type lookup by file extension (replaces the `mime` package).
 String _mimeFromExtension(String name) {
@@ -55,6 +55,10 @@ String _mimeFromExtension(String name) {
   return map[ext] ?? 'application/octet-stream';
 }
 
+/// An interactive AI Agent Playground widget for Flutter.
+///
+/// Connects to various LLM providers, registers Dart-native tools,
+/// remote HTTP/S MCP servers, and local Node.js or Python subprocesses.
 class McpPlayground extends StatefulWidget {
   /// Default LLM setup parameters.
   final LlmConfig? initialLlmConfig;
@@ -81,6 +85,7 @@ class McpPlayground extends StatefulWidget {
   /// Optional builder to customize rendering of chat bubble message contents dynamically.
   final Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
 
+  /// Creates a new [McpPlayground] widget instance.
   const McpPlayground({
     super.key,
     this.initialLlmConfig,

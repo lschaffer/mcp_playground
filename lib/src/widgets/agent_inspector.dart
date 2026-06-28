@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models.dart';
-import '../playground_controller.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
 
 class ModelTokenPrice {
   final double inputPer1MUsd;

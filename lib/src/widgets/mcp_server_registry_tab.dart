@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
-import '../models.dart';
-import '../playground_controller.dart';
+import '../../models.dart';
+import '../../playground_controller.dart';
 import '../local_mcp_client.dart';
 import 'server_tools_dialog.dart';
 

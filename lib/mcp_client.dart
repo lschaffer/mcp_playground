@@ -10,10 +10,19 @@ typedef McpLogCallback = void Function(String message, {bool isError});
 
 /// Core client connection class to communicate with MCP servers over HTTP/HTTPS.
 class MCPClient extends ChangeNotifier {
+  /// The base URL of the remote MCP server.
   final String serverUrl;
+
+  /// The endpoint path for MCP requests (defaults to `/mcp`).
   final String mcpEndpoint;
+
+  /// Optional bearer token used for authorization headers.
   final String? bearerToken;
+
+  /// Optional API password used for basic authentication headers.
   final String? apiPassword;
+
+  /// Optional log callback handler to pipe system logs.
   final McpLogCallback? logCallback;
 
   String? _effectiveBearerToken;
@@ -36,6 +45,7 @@ class MCPClient extends ChangeNotifier {
   /// Session ID for stateful Streamable HTTP transport (MCP 2025).
   String? _sessionId;
 
+  /// Creates a new [MCPClient] instance.
   MCPClient(
     this.serverUrl, {
     this.mcpEndpoint = '/mcp',
@@ -114,11 +124,19 @@ class MCPClient extends ChangeNotifier {
     return sseBody;
   }
 
+  /// Broadcast stream of all low-level JSON-RPC message packets received.
   Stream<MCPMessage> get messageStream => _messageController.stream;
+
+  /// Whether the client is currently connected successfully to the MCP server.
   bool get isConnected => _isConnected;
+
+  /// Cached list of tools exposed by the remote MCP server.
   List<MCPTool> get availableTools => List.unmodifiable(_availableTools);
+
+  /// Cached list of resources exposed by the remote MCP server.
   List<MCPResource> get availableResources => List.unmodifiable(_availableResources);
 
+  /// Connects to the remote server and performs the MCP initialize sequence.
   Future<void> connect() async {
     try {
       await _testConnection();
@@ -302,6 +320,7 @@ class MCPClient extends ChangeNotifier {
     }
   }
 
+  /// Requests the remote MCP server to execute a specific tool with arguments.
   Future<MCPToolResult> callTool(String name, Map<String, dynamic> arguments) async {
     final request = MCPRequest(id: _uuid.v4(), method: 'tools/call', params: {'name': name, 'arguments': arguments});
 
@@ -327,6 +346,7 @@ class MCPClient extends ChangeNotifier {
     );
   }
 
+  /// Requests the remote MCP server to read a resource by its URI.
   Future<String> readResource(String uri) async {
     final request = MCPRequest(id: _uuid.v4(), method: 'resources/read', params: {'uri': uri});
     final response = await _sendRequest(request);
@@ -381,12 +401,14 @@ class MCPClient extends ChangeNotifier {
     }
   }
 
+  /// Force-triggers reconnection to the remote MCP server.
   Future<void> reconnect() async {
     _reconnectionAttempts = 0;
     _isReconnecting = false;
     await connect();
   }
 
+  /// Disconnects from the remote server and stops health checking.
   Future<void> disconnect() async {
     _isConnected = false;
     _stopHealthCheck();
@@ -404,21 +426,35 @@ class MCPClient extends ChangeNotifier {
 
 /// Dynamic wrapper representing an MCP server definition in the multi-server manager.
 class MCPClientDef {
+  /// Unique identifier name of the server config.
   final String name;
+
+  /// The associated [MCPClient] instance.
   final MCPClient client;
+
+  /// Optional display/friendly name for rendering in UI tabs.
   final String? displayName;
 
+  /// Creates a new [MCPClientDef] instance.
   MCPClientDef({
     required this.name,
     required this.client,
     this.displayName,
   });
 
+  /// The user-facing label name of the server.
   String get label => displayName ?? name;
+
+  /// The target connection endpoint URL.
   String get url => client.serverUrl;
+
+  /// Connection status of the wrapped client.
   bool get isConnected => client.isConnected;
+
+  /// List of capabilities/tools exposed by the server.
   List<MCPTool> get availableTools => client.availableTools;
 
+  /// Passes the tool call request to the wrapped client instance.
   Future<MCPToolResult> callTool(String toolName, Map<String, dynamic> arguments) {
     return client.callTool(toolName, arguments);
   }

@@ -7,17 +7,30 @@ import 'models.dart';
 import 'mcp_client.dart';
 import 'llm_service.dart';
 import 'local_tools.dart';
-import 'local_mcp_client.dart';
+import 'src/local_mcp_client.dart';
 
+/// Abstract delegate for storing and loading LLM configuration, server registry, and saved setups.
 abstract class McpPlaygroundStorageDelegate {
+  /// Saves the active LLM configuration.
   Future<void> saveLlmConfig(LlmConfig config);
+
+  /// Loads the saved LLM configuration.
   Future<LlmConfig?> loadLlmConfig();
+
+  /// Saves the list of registered MCP servers.
   Future<void> saveServers(List<McpServerConfig> servers);
+
+  /// Loads the list of registered MCP servers.
   Future<List<McpServerConfig>> loadServers();
+
+  /// Saves the list of user-created configuration setups.
   Future<void> saveSetups(List<SavedPlaygroundSetup> setups);
+
+  /// Loads the list of user-created configuration setups.
   Future<List<SavedPlaygroundSetup>> loadSetups();
 }
 
+/// A default implementation of [McpPlaygroundStorageDelegate] using SharedPreferences.
 class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   static const _kLlm = 'mcp_playground_llm_config';
   static const _kServers = 'mcp_playground_servers';
@@ -89,6 +102,7 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   }
 }
 
+/// Controller managing the state of the AI Agent Playground, chat messages, active tool loop execution, and server manager.
 class PlaygroundController extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
   LlmConfig _llmConfig;
@@ -101,6 +115,8 @@ class PlaygroundController extends ChangeNotifier {
   String? _errorMessage;
   bool _stopAfterToolCall = false;
   final Set<String> _enabledToolNames = {};
+  
+  /// Optional builder to customize rendering of chat bubble message contents dynamically.
   Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
 
   // ── Tool loop interception ──────────────────────────────────────
@@ -133,6 +149,7 @@ class PlaygroundController extends ChangeNotifier {
   final MultiMCPManager _mcpManager = MultiMCPManager();
   final Uuid _uuid = const Uuid();
 
+  /// Creates a new [PlaygroundController] instance.
   PlaygroundController({
     LlmConfig? initialLlmConfig,
     List<McpServerConfig>? initialServers,
