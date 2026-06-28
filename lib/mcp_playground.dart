@@ -342,15 +342,27 @@ class _McpPlaygroundState extends State<McpPlayground> {
       ));
     }
 
-    final chartTools = _controller.localTools
-        .where((t) => t.name == 'create_chart_png' || t.name == 'chart2png')
+    final interactiveChartTools = _controller.localTools
+        .where((t) => t.name == 'create_chart_png')
         .map((t) => t.toMCPTool())
         .toList();
-    if (chartTools.isNotEmpty) {
+    if (interactiveChartTools.isNotEmpty) {
       groups.add(_ToolsetGroup(
-        name: 'Chart generator',
-        description: 'Generate PNG charts: line, bar, area, pie, scatter.',
-        tools: chartTools,
+        name: 'Chart generator (Interactive)',
+        description: 'Generate interactive JSON charts rendered via fl_chart.',
+        tools: interactiveChartTools,
+      ));
+    }
+
+    final imageChartTools = _controller.localTools
+        .where((t) => t.name == 'chart2png')
+        .map((t) => t.toMCPTool())
+        .toList();
+    if (imageChartTools.isNotEmpty) {
+      groups.add(_ToolsetGroup(
+        name: 'Chart generator (PNG Image)',
+        description: 'Generate flat PNG image charts from canvas rendering.',
+        tools: imageChartTools,
       ));
     }
 
