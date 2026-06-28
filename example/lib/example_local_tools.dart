@@ -36,9 +36,11 @@ String _wmoCodeToDesc(int code) {
   };
 }
 
+const String _baseUrl = 'https://api.open-meteo.com/v1';
+const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
+
 class GetCurrentWeatherTool extends McpLocalTool {
-  static const String _baseUrl = 'https://api.open-meteo.com/v1';
-  static const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
+
 
   @override
   String get name => 'get_current_weather';
@@ -173,8 +175,7 @@ class GetCurrentWeatherTool extends McpLocalTool {
 }
 
 class GetHourlyForecastTool extends McpLocalTool {
-  static const String _baseUrl = 'https://api.open-meteo.com/v1';
-  static const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
+
 
   @override
   String get name => 'get_hourly_forecast';
@@ -310,8 +311,7 @@ class GetHourlyForecastTool extends McpLocalTool {
 }
 
 class GetDailyForecastTool extends McpLocalTool {
-  static const String _baseUrl = 'https://api.open-meteo.com/v1';
-  static const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
+
 
   @override
   String get name => 'get_daily_forecast';
@@ -448,7 +448,7 @@ class GetDailyForecastTool extends McpLocalTool {
 }
 
 class GeocodeWeatherCityTool extends McpLocalTool {
-  static const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
+
 
   @override
   String get name => 'geocode_weather_city';
