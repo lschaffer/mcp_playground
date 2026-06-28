@@ -35,10 +35,41 @@ class ExampleLitePage extends StatelessWidget {
       ),
     ];
 
-    return McpPlayground(
-      initialLlmConfig: initialLlm,
-      initialLocalMcpServers: initialLocalServers,
-      disableConfigDialog: true,
+    return Scaffold(
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Container(
+              height: 56,
+              color: Theme.of(context).colorScheme.surfaceContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Lite Desktop Demo - Local MCP Subprocesses',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: McpPlayground(
+              initialLlmConfig: initialLlm,
+              initialLocalMcpServers: initialLocalServers,
+              disableConfigDialog: true,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

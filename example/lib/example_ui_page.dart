@@ -3,6 +3,19 @@ import 'package:mcp_playground_flutter/mcp_playground_flutter.dart';
 import 'example_local_tools.dart';
 import 'env_loader.dart';
 
+class UiExampleStorageDelegate extends SharedPreferencesStorageDelegate {
+  @override
+  Future<void> saveServers(List<McpServerConfig> servers) async {
+    // Ignore servers saving in UI example
+  }
+
+  @override
+  Future<List<McpServerConfig>> loadServers() async {
+    // Always return empty list so no registered MCP servers show up in UI example
+    return const [];
+  }
+}
+
 class ExampleUiPage extends StatelessWidget {
   const ExampleUiPage({super.key});
 
@@ -46,10 +59,41 @@ class ExampleUiPage extends StatelessWidget {
       baseUrl: EnvLoader.get('LLM_URL'),
     );
 
-    // Return the playground widget with custom tools registered.
-    return McpPlayground(
-      initialLlmConfig: initialLlm.provider != LlmProvider.none ? initialLlm : null,
-      customLocalTools: demoLocalTools,
+    return Scaffold(
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Container(
+              height: 56,
+              color: Theme.of(context).colorScheme.surfaceContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Full UI Demo - Local Dart Tools',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: McpPlayground(
+              initialLlmConfig: initialLlm.provider != LlmProvider.none ? initialLlm : null,
+              customLocalTools: demoLocalTools,
+              storageDelegate: UiExampleStorageDelegate(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

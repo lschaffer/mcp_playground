@@ -316,31 +316,39 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
   // Grouped Toolsets Helper
   List<_ToolsetGroup> _getToolsetGroups() {
-    final groups = <_ToolsetGroup>[
-      _ToolsetGroup(
+    final groups = <_ToolsetGroup>[];
+
+    final weatherTools = _controller.localTools
+        .where(
+          (t) =>
+              t.name == 'get_current_weather' ||
+              t.name == 'get_hourly_forecast' ||
+              t.name == 'get_daily_forecast' ||
+              t.name == 'geocode_weather_city',
+        )
+        .map((t) => t.toMCPTool())
+        .toList();
+    if (weatherTools.isNotEmpty) {
+      groups.add(_ToolsetGroup(
         name: 'Weather',
         description:
             'Fetch weather forecasts using Open-Meteo (free, no API key). Provides current conditions, hourly and daily forecasts.',
-        tools: _controller.localTools
-            .where(
-              (t) =>
-                  t.name == 'get_current_weather' ||
-                  t.name == 'get_hourly_forecast' ||
-                  t.name == 'get_daily_forecast' ||
-                  t.name == 'geocode_weather_city',
-            )
-            .map((t) => t.toMCPTool())
-            .toList(),
-      ),
-      _ToolsetGroup(
+        tools: weatherTools,
+      ));
+    }
+
+    final chartTools = _controller.localTools
+        .where((t) => t.name == 'create_chart_png')
+        .map((t) => t.toMCPTool())
+        .toList();
+    if (chartTools.isNotEmpty) {
+      groups.add(_ToolsetGroup(
         name: 'Chart generator',
         description: 'Generate PNG charts: line, bar, area, pie, scatter.',
-        tools: _controller.localTools
-            .where((t) => t.name == 'create_chart_png')
-            .map((t) => t.toMCPTool())
-            .toList(),
-      ),
-    ];
+        tools: chartTools,
+      ));
+    }
+
     for (final client in _controller.mcpClients) {
       if (client.isConnected) {
         final isExt = client.url.startsWith('http');
