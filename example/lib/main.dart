@@ -107,6 +107,7 @@ class McpPlaygroundScreen extends StatelessWidget {
       initialLocalMcpServers: initialLocalServers,
       messageContentBuilder: (context, message) {
         if (message.type != MessageType.toolResponse) return null;
+        if (message.toolName != 'create_chart_png') return null;
         final contentText = message.content.trim();
         if (!((contentText.startsWith('{') && contentText.endsWith('}')) ||
             (contentText.startsWith('[') && contentText.endsWith(']')))) {
