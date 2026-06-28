@@ -78,6 +78,9 @@ class McpPlayground extends StatefulWidget {
   /// Optional locale override ('en' or 'de').
   final String? locale;
 
+  /// Optional builder to customize rendering of chat bubble message contents dynamically.
+  final Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
+
   const McpPlayground({
     super.key,
     this.initialLlmConfig,
@@ -87,6 +90,7 @@ class McpPlayground extends StatefulWidget {
     this.customLocalTools,
     this.disableConfigDialog = false,
     this.locale,
+    this.messageContentBuilder,
   });
 
   @override
@@ -153,6 +157,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       customLocalTools: widget.customLocalTools,
       storageDelegate: widget.storageDelegate,
     );
+    _controller.messageContentBuilder = widget.messageContentBuilder;
     _controller.addListener(_onStateChange);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -995,6 +1000,14 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             final enable = setup.enabledToolNames.contains(t);
                             _controller.toggleToolEnabled(t, enable);
                           }
+
+                          if (_playgroundStarted) {
+                            _controller.systemPrompt = setup.systemPrompt;
+                            _controller.chatMode = setup.chatMode;
+                            _controller.stopAfterToolCall = setup.stopAfterToolCall;
+                            _controller.customLlmConfig = setup.customLlmConfig;
+                            _controller.clearChat();
+                          }
                         });
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1634,7 +1647,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   padding: const EdgeInsets.only(bottom: 24),
                   itemCount: _controller.messages.length,
                   itemBuilder: (ctx, idx) {
-                    return ChatBubble(message: _controller.messages[idx]);
+                    return ChatBubble(
+                      message: _controller.messages[idx],
+                      controller: _controller,
+                    );
                   },
                 ),
         ),

@@ -16,6 +16,7 @@ dependencies:
   http: ^1.2.1
   dartssh2: ^2.18.0
   mime: ^1.0.6
+  fl_chart: ^0.69.2
 
 dev_dependencies:
   flutter_test:

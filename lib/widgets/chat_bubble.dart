@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models.dart';
+import '../playground_controller.dart';
 
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
+  final PlaygroundController? controller;
 
-  const ChatBubble({super.key, required this.message});
+  const ChatBubble({super.key, required this.message, this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -18,6 +20,12 @@ class ChatBubble extends StatelessWidget {
     final isUser = message.role == ChatRole.user;
     final isSystem = message.role == ChatRole.system;
 
+    if (controller?.messageContentBuilder != null) {
+      final customWidget = controller!.messageContentBuilder!(context, message);
+      if (customWidget != null) {
+        return customWidget;
+      }
+    }
 
     if (message.type == MessageType.toolCall) {
       return _buildToolCallBubble(context, theme);

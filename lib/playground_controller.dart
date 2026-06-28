@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'models.dart';
@@ -101,6 +101,7 @@ class PlaygroundController extends ChangeNotifier {
   String? _errorMessage;
   bool _stopAfterToolCall = false;
   final Set<String> _enabledToolNames = {};
+  Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
 
   // ── Tool loop interception ──────────────────────────────────────
   /// Maximum number of tool call iterations per user request.
