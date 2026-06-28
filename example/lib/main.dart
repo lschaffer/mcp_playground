@@ -68,8 +68,9 @@ class McpPlaygroundScreen extends StatelessWidget {
       SshMakeDirectoryTool(() => sshDefaults),
       SshRemoveDirectoryTool(() => sshDefaults),
 
-      // --- Canvas-based chart generator (no extra deps) ---
-      CreateChartPngTool(),
+      // --- Chart tools ---
+      CreateChartPngTool(), // JSON config -> rendered via fl_chart in host
+      Chart2PngTool(),      // Canvas-based -> returns direct PNG image
     ];
 
     // Load initial LLM configuration if configured in .env
