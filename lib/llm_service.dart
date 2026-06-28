@@ -67,12 +67,12 @@ class LLMService {
     String? systemPrompt,
   ) async {
     try {
-      final List<openai.ChatCompletionMessage> openAiMsgs = [];
+      final List<openai.ChatMessage> openAiMsgs = [];
 
       if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
         openAiMsgs.add(
-          openai.ChatCompletionMessage.system(
-            content: systemPrompt,
+          openai.ChatMessage.system(
+            systemPrompt,
           ),
         );
       }
@@ -81,23 +81,20 @@ class LLMService {
         switch (msg.role) {
           case ChatRole.user:
             openAiMsgs.add(
-              openai.ChatCompletionMessage.user(
-                content: openai.ChatCompletionUserMessageContent.string(
-                  msg.content,
-                ),
+              openai.ChatMessage.user(
+                msg.content,
               ),
             );
           case ChatRole.assistant:
             if (msg.type == MessageType.toolCall) {
               openAiMsgs.add(
-                openai.ChatCompletionMessage.assistant(
+                openai.ChatMessage.assistant(
                   toolCalls: [
-                    openai.ChatCompletionMessageToolCall(
+                    openai.ToolCall.functionCall(
                       id: msg.id,
-                      type: openai.ChatCompletionMessageToolCallType.function,
-                      function: openai.ChatCompletionMessageFunctionCall(
+                      call: openai.FunctionCall.fromMap(
                         name: msg.toolName ?? '',
-                        arguments: jsonEncode(msg.toolArguments ?? {}),
+                        arguments: msg.toolArguments ?? {},
                       ),
                     ),
                   ],
@@ -105,46 +102,43 @@ class LLMService {
               );
             } else {
               openAiMsgs.add(
-                openai.ChatCompletionMessage.assistant(
+                openai.ChatMessage.assistant(
                   content: msg.content,
                 ),
               );
             }
           case ChatRole.tool:
             openAiMsgs.add(
-              openai.ChatCompletionMessage.tool(
+              openai.ChatMessage.tool(
                 toolCallId: msg.id,
                 content: msg.content,
               ),
             );
           case ChatRole.system:
             openAiMsgs.add(
-              openai.ChatCompletionMessage.system(
-                content: msg.content,
+              openai.ChatMessage.system(
+                msg.content,
               ),
             );
         }
       }
 
-      final List<openai.ChatCompletionTool> openAiTools = [];
+      final List<openai.Tool> openAiTools = [];
       if (tools.isNotEmpty && config.useNativeToolCall) {
         for (final t in tools) {
           openAiTools.add(
-            openai.ChatCompletionTool(
-              type: openai.ChatCompletionToolType.function,
-              function: openai.FunctionObject(
-                name: t.name,
-                description: t.description ?? '',
-                parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
-              ),
+            openai.Tool.function(
+              name: t.name,
+              description: t.description ?? '',
+              parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
             ),
           );
         }
       }
 
-      final response = await client.createChatCompletion(
-        request: openai.CreateChatCompletionRequest(
-          model: openai.ChatCompletionModel.modelId(config.model.trim().isNotEmpty ? config.model : 'gpt-4o-mini'),
+      final response = await client.chat.completions.create(
+        openai.ChatCompletionCreateRequest(
+          model: config.model.trim().isNotEmpty ? config.model : 'gpt-4o-mini',
           messages: openAiMsgs,
           tools: openAiTools.isNotEmpty ? openAiTools : null,
           temperature: config.temperature,
@@ -160,7 +154,7 @@ class LLMService {
 
       if (choice.message.toolCalls != null) {
         for (final tc in choice.message.toolCalls!) {
-          if (tc.type == openai.ChatCompletionMessageToolCallType.function) {
+          if (tc.type == 'function') {
             Map<String, dynamic> args = {};
             try {
               args = jsonDecode(tc.function.arguments) as Map<String, dynamic>;
@@ -189,8 +183,10 @@ class LLMService {
     String? systemPrompt,
   ) async {
     final client = openai.OpenAIClient(
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : null,
+      config: openai.OpenAIConfig(
+        authProvider: openai.ApiKeyProvider(config.apiKey),
+        baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.openai.com/v1',
+      ),
     );
     return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
   }
@@ -202,9 +198,11 @@ class LLMService {
     String? systemPrompt,
   ) async {
     final client = openai.OpenAIClient(
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.mistral.ai/v1',
-      client: _MistralPatchClient(http.Client()),
+      config: openai.OpenAIConfig(
+        authProvider: openai.ApiKeyProvider(config.apiKey),
+        baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.mistral.ai/v1',
+      ),
+      httpClient: _MistralPatchClient(http.Client()),
     );
     return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
   }
@@ -218,10 +216,14 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = anthropic.AnthropicClient(apiKey: config.apiKey);
+    final client = anthropic.AnthropicClient(
+      config: anthropic.AnthropicConfig(
+        authProvider: anthropic.ApiKeyProvider(config.apiKey),
+      ),
+    );
 
     try {
-      final List<anthropic.Message> anthropicMsgs = [];
+      final List<anthropic.InputMessage> anthropicMsgs = [];
 
       for (final msg in messages) {
         if (msg.role == ChatRole.system) continue;
@@ -229,76 +231,61 @@ class LLMService {
         switch (msg.role) {
           case ChatRole.user:
             anthropicMsgs.add(
-              anthropic.Message(
-                role: anthropic.MessageRole.user,
-                content: anthropic.MessageContent.text(msg.content),
-              ),
+              anthropic.InputMessage.user(msg.content),
             );
           case ChatRole.assistant:
             if (msg.type == MessageType.toolCall) {
               anthropicMsgs.add(
-                anthropic.Message(
-                  role: anthropic.MessageRole.assistant,
-                  content: anthropic.MessageContent.blocks([
-                    anthropic.Block.toolUse(
-                      id: msg.id,
-                      name: msg.toolName ?? '',
-                      input: msg.toolArguments ?? {},
-                    ),
-                  ]),
-                ),
+                anthropic.InputMessage.assistantBlocks([
+                  anthropic.InputContentBlock.toolUse(
+                    id: msg.id,
+                    name: msg.toolName ?? '',
+                    input: msg.toolArguments ?? {},
+                  ),
+                ]),
               );
             } else {
               anthropicMsgs.add(
-                anthropic.Message(
-                  role: anthropic.MessageRole.assistant,
-                  content: anthropic.MessageContent.text(msg.content),
-                ),
+                anthropic.InputMessage.assistant(msg.content),
               );
             }
           case ChatRole.tool:
             anthropicMsgs.add(
-              anthropic.Message(
-                role: anthropic.MessageRole.user,
-                content: anthropic.MessageContent.blocks([
-                  anthropic.Block.toolResult(
-                    toolUseId: msg.id,
-                    content: anthropic.ToolResultBlockContent.text(
-                      msg.content,
-                    ),
-                  ),
-                ]),
-              ),
+              anthropic.InputMessage.userBlocks([
+                anthropic.InputContentBlock.toolResultText(
+                  toolUseId: msg.id,
+                  text: msg.content,
+                ),
+              ]),
             );
           default:
             break;
         }
       }
 
-      final List<anthropic.Tool> anthropicTools = [];
+      final List<anthropic.ToolDefinition> anthropicTools = [];
       if (tools.isNotEmpty && config.useNativeToolCall) {
         for (final t in tools) {
           anthropicTools.add(
-            anthropic.Tool.custom(
-              name: t.name,
-              description: t.description ?? '',
-              inputSchema: t.inputSchema ?? {'type': 'object', 'properties': {}},
+            anthropic.ToolDefinition.custom(
+              anthropic.Tool(
+                name: t.name,
+                description: t.description ?? '',
+                inputSchema: anthropic.InputSchema.fromJson(
+                  t.inputSchema ?? {'type': 'object', 'properties': {}},
+                ),
+              ),
             ),
           );
         }
       }
 
-      final response = await client.createMessage(
-        request: anthropic.CreateMessageRequest(
-          model: anthropic.Model.model(
-            anthropic.Models.values.firstWhere(
-              (m) => m.name == config.model,
-              orElse: () => anthropic.Models.claude35SonnetLatest,
-            ),
-          ),
+      final response = await client.messages.create(
+        anthropic.MessageCreateRequest(
+          model: config.model.trim().isNotEmpty ? config.model : 'claude-3-5-sonnet-latest',
           messages: anthropicMsgs,
           system: systemPrompt != null && systemPrompt.trim().isNotEmpty
-              ? anthropic.CreateMessageRequestSystem.text(systemPrompt)
+              ? anthropic.SystemPrompt.text(systemPrompt)
               : null,
           tools: anthropicTools.isNotEmpty ? anthropicTools : null,
           temperature: config.temperature,
@@ -309,7 +296,7 @@ class LLMService {
       final textBuffer = StringBuffer();
       final toolCalls = <LLMToolCall>[];
 
-      for (final block in response.content.blocks) {
+      for (final block in response.content) {
         if (block is anthropic.TextBlock) {
           textBuffer.write(block.text);
         } else if (block is anthropic.ToolUseBlock) {
@@ -511,18 +498,20 @@ class LLMService {
       headers['Authorization'] = 'Bearer ${config.apiKey.trim()}';
     }
     final client = ollama.OllamaClient(
-      baseUrl: config.baseUrl.trim().isNotEmpty
-          ? config.baseUrl
-          : 'http://localhost:11434/api',
-      headers: headers,
+      config: ollama.OllamaConfig(
+        baseUrl: config.baseUrl.trim().isNotEmpty
+            ? config.baseUrl
+            : 'http://localhost:11434/api',
+        defaultHeaders: headers,
+      ),
     );
 
     try {
-      final List<ollama.Message> ollamaMsgs = [];
+      final List<ollama.ChatMessage> ollamaMsgs = [];
 
       if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
         ollamaMsgs.add(
-          ollama.Message(
+          ollama.ChatMessage(
             role: ollama.MessageRole.system,
             content: systemPrompt,
           ),
@@ -552,7 +541,7 @@ class LLMService {
         }
 
         ollamaMsgs.add(
-          ollama.Message(
+          ollama.ChatMessage(
             role: role,
             content: msg.content,
             toolCalls: toolCalls,
@@ -560,12 +549,11 @@ class LLMService {
         );
       }
 
-      final List<ollama.Tool> ollamaTools = [];
+      final List<ollama.ToolDefinition> ollamaTools = [];
       if (tools.isNotEmpty && config.useNativeToolCall) {
         for (final t in tools) {
           ollamaTools.add(
-            ollama.Tool(
-              type: ollama.ToolType.function,
+            ollama.ToolDefinition(
               function: ollama.ToolFunction(
                 name: t.name,
                 description: t.description ?? '',
@@ -576,12 +564,12 @@ class LLMService {
         }
       }
 
-      final response = await client.generateChatCompletion(
-        request: ollama.GenerateChatCompletionRequest(
+      final response = await client.chat.create(
+        request: ollama.ChatRequest(
           model: config.model,
           messages: ollamaMsgs,
           tools: ollamaTools.isNotEmpty ? ollamaTools : null,
-          options: ollama.RequestOptions(
+          options: ollama.ModelOptions(
             temperature: config.temperature,
             numPredict: config.maxTokens > 0 ? config.maxTokens : null,
             seed: config.seed,
@@ -589,11 +577,11 @@ class LLMService {
         ),
       );
 
-      final answer = response.message.content;
+      final answer = response.message?.content ?? '';
       final toolCalls = <LLMToolCall>[];
 
-      if (response.message.toolCalls != null && response.message.toolCalls!.isNotEmpty) {
-        for (final tc in response.message.toolCalls!) {
+      if (response.message?.toolCalls != null && response.message!.toolCalls!.isNotEmpty) {
+        for (final tc in response.message!.toolCalls!) {
           toolCalls.add(
             LLMToolCall(
               id: const Uuid().v4(),
