@@ -333,7 +333,7 @@ class ChatBubble extends StatelessWidget {
           : 'png';
       final fileName = 'generated_image.$extension';
 
-      final resultPath = await FilePicker.platform.saveFile(
+      final resultPath = await FilePicker.saveFile(
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: [extension],

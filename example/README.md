@@ -11,13 +11,13 @@ It initializes the playground widget with custom local Dart-native tools (Weathe
 Here is how the playground and its configuration interfaces look:
 
 ### LLM Provider Setup
-![LLM Config](https://raw.githubusercontent.com/lschaffer/mcp_playground/main/screenshots/example_ui/playground_config_llm.png)
+![LLM Config](../screenshots/example_ui/playground_config_llm.png)
 
 ### Local MCP Subprocesses Setup (Desktop Mode)
-![Local MCP Config](https://raw.githubusercontent.com/lschaffer/mcp_playground/main/screenshots/example_ui/playground_config_local_mcp.png)
+![Local MCP Config](../screenshots/example_ui/playground_config_local_mcp.png)
 
 ### Filesystem MCP Server Integration
-![Filesystem MCP Test](https://raw.githubusercontent.com/lschaffer/mcp_playground/main/screenshots/example_ui/filesystem_mcp_test.png)
+![Filesystem MCP Test](../screenshots/example_ui/filesystem_mcp_test.png)
 
 ---
 

@@ -182,7 +182,7 @@ class LocalMCPClient extends MCPClient {
       'jsonrpc': '2.0',
       'id': id,
       'method': method,
-      if (params != null) 'params': params,
+      'params': ?params,
     };
 
     final completer = Completer<Map<String, dynamic>>();

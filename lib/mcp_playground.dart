@@ -290,7 +290,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
   Future<void> _pickAttachments() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         withData: true,
         allowMultiple: true,
       );

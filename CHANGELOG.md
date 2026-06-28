@@ -1,3 +1,10 @@
+## 0.0.2
+
+* Upgraded `file_picker` dependency to `^11.0.2` (migrated to static API).
+* Upgraded `flutter_lints` dependency to `^6.0.0` and cleaned linter syntax.
+* Fixed broken visual preview image links in example documentation to use relative paths for pub.dev CDN compatibility.
+* Split chart generation examples into distinct "Interactive (fl_chart)" and "PNG Image (canvas)" select tool checkboxes.
+
 ## 0.0.1
 
 * Initial release of `mcp_playground_flutter`.

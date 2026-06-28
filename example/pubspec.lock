@@ -5,10 +5,10 @@ packages:
     dependency: transitive
     description:
       name: anthropic_sdk_dart
-      sha256: "30162d70384f38f98f22e2402776f28d260b721fef684893dbed2a3108e72428"
+      sha256: a5a1cc97d4253dd039c3bc36a8eb2fe14bb59c120765f5b91c5fabb8576129e8
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.1"
+    version: "5.0.0"
   args:
     dependency: transitive
     description:
@@ -105,6 +105,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.18.0"
+  dbus:
+    dependency: transitive
+    description:
+      name: dbus
+      sha256: "0ce9b0a839e6dee59a37a623d2fc26a35bbbe6404213e419b0d6411023d62645"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.14"
   equatable:
     dependency: transitive
     description:
@@ -141,10 +149,10 @@ packages:
     dependency: transitive
     description:
       name: file_picker
-      sha256: "09b474c0c8117484b80cbebc043801ff91e05cfbd2874d512825c899e1754694"
+      sha256: f13a03000d942e476bc1ff0a736d2e9de711d2f89a95cd4c1d88f861c3348387
       url: "https://pub.dev"
     source: hosted
-    version: "9.2.3"
+    version: "11.0.2"
   fixnum:
     dependency: transitive
     description:
@@ -157,10 +165,10 @@ packages:
     dependency: "direct main"
     description:
       name: fl_chart
-      sha256: "74959b99b92b9eebeed1a4049426fd67c4abc3c5a0f4d12e2877097d6a11ae08"
+      sha256: b938f77d042cbcd822936a7a359a7235bad8bd72070de1f827efc2cc297ac888
       url: "https://pub.dev"
     source: hosted
-    version: "0.69.2"
+    version: "1.2.0"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -200,14 +208,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  freezed_annotation:
-    dependency: transitive
-    description:
-      name: freezed_annotation
-      sha256: "7294967ff0a6d98638e7acb774aac3af2550777accd8149c90af5b014e6d44d8"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
   googleai_dart:
     dependency: transitive
     description:
@@ -256,14 +256,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
-  json_annotation:
-    dependency: transitive
-    description:
-      name: json_annotation
-      sha256: "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.12.0"
   leak_tracker:
     dependency: transitive
     description:
@@ -334,7 +326,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.0.2"
   meta:
     dependency: transitive
     description:
@@ -347,10 +339,10 @@ packages:
     dependency: "direct main"
     description:
       name: mime
-      sha256: "801fd0b26f14a4a58ccb09d5892c3fbdeff209594300a542492cf13fba9d247a"
+      sha256: "41a20518f0cb1256669420fdba0cd90d21561e560ac240f26ef8322e45bb7ed6"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.6"
+    version: "2.0.0"
   objective_c:
     dependency: transitive
     description:
@@ -363,18 +355,18 @@ packages:
     dependency: transitive
     description:
       name: ollama_dart
-      sha256: "7ced51fa4151bef696a9e1571ca7b4ac4bc4b35331e45ae5e0684560fcd26d99"
+      sha256: ec1ed4d10ca53ca5014b50db2c189fe88634e3ba4203b328cb436562f884fe17
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.0+1"
+    version: "2.3.0"
   openai_dart:
     dependency: transitive
     description:
       name: openai_dart
-      sha256: "037605a210cb3b1d8ac72b11a4ace26f25ee9267aaf981d2af1d7f0524adcbf5"
+      sha256: "17efcb65848c5aeb1f9e8d739bc8549ef0ac72e02098b679d609653c2d6e26e2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.2"
+    version: "7.0.0"
   package_config:
     dependency: transitive
     description:
@@ -439,6 +431,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.0"
+  petitparser:
+    dependency: transitive
+    description:
+      name: petitparser
+      sha256: "91bd59303e9f769f108f8df05e371341b15d59e995e6806aefab827b58336675"
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.0.2"
   pinenacl:
     dependency: transitive
     description:
@@ -724,6 +724,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
+  xml:
+    dependency: transitive
+    description:
+      name: xml
+      sha256: "971043b3a0d3da28727e40ed3e0b5d18b742fa5a68665cca88e74b7876d5e025"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.6.1"
   yaml:
     dependency: transitive
     description:
