@@ -1,3 +1,49 @@
+## 0.0.8
+
+* Added lenient HTML document parsing and a collapsed "HTML Document Preview" magnifier view modal to robot messages.
+* Renamed Settings middle tab to "Remote MCP Servers".
+* Filtered out unconnectable remote SSE servers from registry catalog listing, removing the `sse` tag chip.
+* Fixed on-demand tool discovery in the tools catalog dialog by triggering local process connections on dialog load and gracefully shutting down inactive servers upon close.
+* Implemented comprehensive translations and localizations support for HTML previews, dialog messages, and tab names in English and German.
+* Upgraded Kotlin compiler version in the example app to `2.2.20` to support modern Gradle compilation.
+* Filtered base64 image strings from monospace text preview bubbles and LLM request payloads to optimize context tokens.
+* Added auto-detection of JSON-embedded spreadsheets and binary files, stripping base64 payloads to show interactive file download cards instead.
+
+## 0.0.7
+
+* Replaced the standard chat message `TextField` input bar in the active chat view with `SubPromptListEditor`, providing the identical multi-prompt entry field, step navigation, and active tools selectors in active chat view.
+* Filtered step-specific tool checklist selectors and dropdowns in `SubPromptListEditor` to show tools belonging exclusively to active/enabled toolsets.
+* Fixed auto-enabling behavior for default/initial local MCP servers installed in background post-frame calls on the very first start, fully guaranteeing zero preselected tools on startup when no configurations are loaded.
+
+## 0.0.6
+
+* Corrected tool state auto-selection on initial app startup: now, if no configuration setup exists, no tools are selected by default.
+* Removed the massive 1200+ line hardcoded JSON registry list from `mcp_server_registry_tab.dart` so it always fetches registry definitions dynamically from the GitHub repository registry.
+* Resolved local MCP subprocess connection timeouts and hangs on Windows by invoking process creation with shell integration (`runInShell: Platform.isWindows`).
+* Increased JSON-RPC call timeout to 60 seconds to allow slow local node packages to initialize successfully.
+* Added a trailing expand details icon to log tiles in the `AgentInspector` panel, and refactored log list entries to present properly formatted previews of system prompts, user questions, tool calls, and execution results.
+
+## 0.0.5
+
+* Implemented multi-prompt step chaining supporting sequential sub-prompt execution, output piping using `${tool_result}` / `${task_result}` placeholders, per-step active tools filtering, and per-step "stop after tool call" execution flags.
+* Added `SubPromptListEditor` widget to edit multi-prompts on the initial setup screen, featuring desktop side-by-side and mobile stack layouts.
+* Refactored active tools selection in playground chat to display only tools belonging to the selected toolset (group) via a dropdown selector, sorting tools alphabetically.
+* Provided mobile fullscreen tool selection dialogs using `Dialog.fullscreen`.
+* Added persistent tool selection and server initialization tracking to save active configuration across restarts.
+* Updated chat input bar tools selector icon dynamically (all, some, none active tools status states).
+* Added active tool schemas (names, descriptions, input schemas) into the system prompt to guide LLMs and improve tool calling correctness.
+* Introduced a togglable widget event logging parameter (`enableLogging`) printing formatted user messages, system prompts, tool calls, and results.
+* Wrapped long tool call names in the chat execution bubble headers by removing truncation behavior.
+
+## 0.0.4
+
+* Improved tool selection dialogs on both the setup screen and chat view by adding per-toolset and global "All / None" toggling controls.
+* Prevented toolset groups from disappearing from the chat selection dialog when all their tools are deselected.
+* Fixed an issue where external HTTP MCP servers would disappear from the available toolsets list after executing a turn by retaining configured clients regardless of transient connection status.
+* Added base64 image and file parsing in chat bubbles to properly render inline image/file attachments (such as PNG charts or spreadsheets) and supported safe, error-free file downloading on Android using scoped storage bytes saving.
+* Replaced the hardcoded GitHub MCP server list with an online-fetched list loaded from the remote registry, caching the registry for 24 hours.
+* Commited the missing agent walkthrough document back to version control.
+
 ## 0.0.3
 
 * Restructured folder layout to relocate all internal widgets and client submodules under the private `lib/src/` directory.

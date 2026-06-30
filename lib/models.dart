@@ -805,3 +805,102 @@ class LocalMcpServerSetup {
     this.launchCommand,
   });
 }
+
+final RegExp subPromptSepRegex = RegExp(r'^\+\+#\+\+(?:\[N(\d)\]|\[NT:([^\]]*)\])?(\[SATC\])?$', multiLine: true);
+
+class SubPromptStep {
+  final String text;
+  final List<String>? enabledToolNames;
+  final bool stopAfterToolCall;
+
+  const SubPromptStep({required this.text, this.enabledToolNames, this.stopAfterToolCall = false});
+
+  bool get isAllTools => enabledToolNames == null;
+  bool get isNoTools => enabledToolNames != null && enabledToolNames!.isEmpty;
+
+  static List<String>? _fromLegacyDigit(String? d) {
+    if (d == '0') return const [];
+    return null;
+  }
+
+  factory SubPromptStep.fromLegacyDigit(String text, String? digit, {bool stopAfterToolCall = false}) =>
+      SubPromptStep(text: text, enabledToolNames: _fromLegacyDigit(digit), stopAfterToolCall: stopAfterToolCall);
+
+  factory SubPromptStep.fromNamedTools(String text, String ntContent, {bool stopAfterToolCall = false}) {
+    if (ntContent.isEmpty) return SubPromptStep(text: text, enabledToolNames: const [], stopAfterToolCall: stopAfterToolCall);
+    return SubPromptStep(
+      text: text,
+      enabledToolNames: ntContent.split('|').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+      stopAfterToolCall: stopAfterToolCall,
+    );
+  }
+}
+
+List<SubPromptStep> parseSubPromptSteps(String text) {
+  final matches = subPromptSepRegex.allMatches(text).toList();
+
+  if (matches.isEmpty) {
+    return [SubPromptStep(text: text.trim())];
+  }
+
+  final steps = <SubPromptStep>[];
+
+  final beforeFirst = text.substring(0, matches[0].start).trim();
+  if (beforeFirst.isNotEmpty) {
+    steps.add(SubPromptStep(text: beforeFirst));
+  }
+
+  for (int i = 0; i < matches.length; i++) {
+    final m = matches[i];
+    final segEnd = i + 1 < matches.length ? matches[i + 1].start : text.length;
+    final segText = text.substring(m.end, segEnd).trim();
+
+    final legacyDigit = m.group(1);
+    final ntContent = m.group(2);
+    final satcFlag = m.group(3);
+    final satc = satcFlag != null;
+
+    SubPromptStep step;
+    if (ntContent != null) {
+      step = SubPromptStep.fromNamedTools(segText, ntContent, stopAfterToolCall: satc);
+    } else {
+      step = SubPromptStep.fromLegacyDigit(segText, legacyDigit, stopAfterToolCall: satc);
+    }
+    steps.add(step);
+  }
+
+  if (steps.isEmpty) steps.add(const SubPromptStep(text: ''));
+  return steps;
+}
+
+String serializeSubPromptSteps(List<SubPromptStep> steps) {
+  if (steps.isEmpty) return '';
+
+  if (steps.length == 1 && steps[0].isAllTools && !steps[0].stopAfterToolCall) {
+    return steps[0].text;
+  }
+
+  String tag(SubPromptStep s) {
+    final nt = s.enabledToolNames == null ? '' : (s.enabledToolNames!.isEmpty ? '[NT:]' : '[NT:${s.enabledToolNames!.join('|')}]');
+    final satc = s.stopAfterToolCall ? '[SATC]' : '';
+    return '$nt$satc';
+  }
+
+  final sb = StringBuffer();
+  for (int i = 0; i < steps.length; i++) {
+    final s = steps[i];
+    final t = tag(s);
+    if (i == 0 && t.isEmpty) {
+      sb.write(s.text);
+    } else {
+      if (sb.isNotEmpty) sb.write('\n');
+      sb.write('++#++');
+      sb.write(t);
+      if (s.text.isNotEmpty) {
+        sb.write('\n');
+        sb.write(s.text);
+      }
+    }
+  }
+  return sb.toString();
+}

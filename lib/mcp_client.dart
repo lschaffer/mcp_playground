@@ -435,6 +435,8 @@ class MCPClientDef {
   /// Optional display/friendly name for rendering in UI tabs.
   final String? displayName;
 
+  List<MCPTool> _cachedTools = [];
+
   /// Creates a new [MCPClientDef] instance.
   MCPClientDef({
     required this.name,
@@ -452,7 +454,12 @@ class MCPClientDef {
   bool get isConnected => client.isConnected;
 
   /// List of capabilities/tools exposed by the server.
-  List<MCPTool> get availableTools => client.availableTools;
+  List<MCPTool> get availableTools => _cachedTools.isNotEmpty ? _cachedTools : client.availableTools;
+
+  /// Update cached tools list in memory.
+  set cachedTools(List<MCPTool> tools) {
+    _cachedTools = tools;
+  }
 
   /// Passes the tool call request to the wrapped client instance.
   Future<MCPToolResult> callTool(String toolName, Map<String, dynamic> arguments) {

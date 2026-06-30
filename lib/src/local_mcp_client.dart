@@ -106,8 +106,21 @@ class LocalMCPClient extends MCPClient {
         }
       }
 
-      _log('Launching process: $exe ${cmdArgs.join(' ')}');
-      _process = await Process.start(exe, cmdArgs, environment: env, workingDirectory: dir);
+      final bool runInShell = Platform.isWindows && (
+        exe.endsWith('.bat') ||
+        exe.endsWith('.cmd') ||
+        exe.contains('npx') ||
+        exe.contains('npm') ||
+        !p.basename(exe).contains('.')
+      );
+
+      _process = await Process.start(
+        exe,
+        cmdArgs,
+        environment: env,
+        workingDirectory: dir,
+        runInShell: runInShell,
+      );
 
       _stdoutSub = _process!.stdout
           .transform(utf8.decoder)
@@ -172,7 +185,7 @@ class LocalMCPClient extends MCPClient {
   Future<Map<String, dynamic>> _sendRpcRequest(
     String method,
     Map<String, dynamic>? params, {
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 60),
   }) async {
     if (_process == null) {
       throw Exception('Process not running');
@@ -411,7 +424,7 @@ class LocalMcpRuntime {
     final candidates = Platform.isWindows ? ['uvx.exe', 'uvx'] : [?shellResolved, ..._unixCandidates('uvx')];
     for (final exe in candidates) {
       try {
-        final result = await Process.run(exe, ['--version']);
+        final result = await Process.run(exe, ['--version'], runInShell: Platform.isWindows);
         if (result.exitCode == 0) return exe;
       } catch (_) {}
     }
@@ -423,7 +436,7 @@ class LocalMcpRuntime {
     final candidates = Platform.isWindows ? ['node.exe', 'node'] : [?shellResolved, ..._unixCandidates('node')];
     for (final exe in candidates) {
       try {
-        final result = await Process.run(exe, ['--version']);
+        final result = await Process.run(exe, ['--version'], runInShell: Platform.isWindows);
         if (result.exitCode == 0) {
           final version = (result.stdout as String).trim();
           final major = int.tryParse(version.replaceFirst(RegExp(r'^v'), '').split('.').first) ?? 0;
@@ -450,7 +463,7 @@ class LocalMcpRuntime {
           ];
     for (final exe in candidates) {
       try {
-        final result = await Process.run(exe, ['--version']);
+        final result = await Process.run(exe, ['--version'], runInShell: Platform.isWindows);
         final out = (result.stdout as String?) ?? '';
         final err = (result.stderr as String?) ?? '';
         final version = (out.isNotEmpty ? out : err).trim();
@@ -529,6 +542,7 @@ class LocalMcpRuntime {
           npm,
           ['install', '-g', pkgName],
           environment: augmentedEnv(extraPath: p.isAbsolute(npm) ? p.dirname(npm) : null),
+          runInShell: Platform.isWindows,
         );
         if (result.exitCode != 0) {
           return 'npm install failed with exit code ${result.exitCode}: ${result.stderr}';
@@ -552,6 +566,7 @@ class LocalMcpRuntime {
           python,
           ['-m', 'venv', '.venv'],
           workingDirectory: dir,
+          runInShell: Platform.isWindows,
         );
         if (venvResult.exitCode != 0) {
           return 'Python venv creation failed: ${venvResult.stderr}';
@@ -570,6 +585,7 @@ class LocalMcpRuntime {
           pip,
           pipArgs,
           workingDirectory: dir,
+          runInShell: Platform.isWindows,
         );
         if (pipResult.exitCode != 0) {
           return 'pip install failed: ${pipResult.stderr}';

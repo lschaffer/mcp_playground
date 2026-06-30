@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models.dart';
 import '../../playground_controller.dart';
+import '../mcp_localizations.dart';
 
-class ServerToolsDialog extends StatelessWidget {
+class ServerToolsDialog extends StatefulWidget {
   final McpServerConfig server;
   final PlaygroundController controller;
 
@@ -22,8 +23,54 @@ class ServerToolsDialog extends StatelessWidget {
   }
 
   @override
+  State<ServerToolsDialog> createState() => _ServerToolsDialogState();
+}
+
+class _ServerToolsDialogState extends State<ServerToolsDialog> {
+  bool _connecting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+    if (widget.server.enabled) {
+      _connect();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    // Cleanup connection if no tools are selected
+    widget.controller.syncMcpServers();
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _connect() async {
+    setState(() {
+      _connecting = true;
+    });
+    try {
+      await widget.controller.connectServer(widget.server.id);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _connecting = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = McpPlaygroundLocalizations.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
     // Background dialog colors matching premium dark theme
@@ -31,7 +78,7 @@ class ServerToolsDialog extends StatelessWidget {
     final textColor = isDark ? Colors.white : Colors.black87;
 
     // Find the client definition in active clients
-    final clients = controller.mcpClients.where((c) => c.name == server.id);
+    final clients = widget.controller.mcpClients.where((c) => c.name == widget.server.id);
     final clientDef = clients.isNotEmpty ? clients.first : null;
     final isConnected = clientDef?.isConnected ?? false;
     final tools = clientDef?.availableTools ?? [];
@@ -51,16 +98,16 @@ class ServerToolsDialog extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${server.name} Tools',
+                  '${widget.server.name} Tools',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: textColor),
                 ),
                 Text(
-                  !server.enabled
-                      ? 'Disabled'
-                      : (isConnected ? '${tools.length} tools available' : 'Offline / Connecting'),
+                  !widget.server.enabled
+                      ? l10n.get('serverDisabled')
+                      : (isConnected ? '${tools.length} tools available' : (_connecting ? l10n.get('connecting') : l10n.get('offline'))),
                   style: TextStyle(
                     fontSize: 12,
-                    color: !server.enabled
+                    color: !widget.server.enabled
                         ? Colors.grey
                         : (isConnected ? Colors.green : Colors.orangeAccent),
                   ),
@@ -75,15 +122,43 @@ class ServerToolsDialog extends StatelessWidget {
               ),
             ],
           ),
-          body: !server.enabled
+          body: !widget.server.enabled
               ? _buildDisabledState(context)
-              : (isConnected ? _buildToolsList(context, tools) : _buildOfflineState(context)),
+              : (_connecting
+                  ? _buildLoadingState(context)
+                  : (isConnected ? _buildToolsList(context, tools) : _buildOfflineState(context))),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(BuildContext context) {
+    final l10n = McpPlaygroundLocalizations.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF00ACC1)),
+            const SizedBox(height: 16),
+            Text(
+              l10n.get('connectingToServer'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l10n.get('startingProcessQueryingTools'),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildDisabledState(BuildContext context) {
+    final l10n = McpPlaygroundLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -92,13 +167,13 @@ class ServerToolsDialog extends StatelessWidget {
           children: [
             const Icon(Icons.power_settings_new_outlined, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text(
-              'Server is disabled',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              l10n.get('serverDisabled'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
             Text(
-              'Please enable "${server.name}" using the switch in the server item to start the server and discover its tools.',
+              l10n.get('pleaseEnableServerToDiscover'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
@@ -109,6 +184,7 @@ class ServerToolsDialog extends StatelessWidget {
   }
 
   Widget _buildOfflineState(BuildContext context) {
+    final l10n = McpPlaygroundLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -117,13 +193,13 @@ class ServerToolsDialog extends StatelessWidget {
           children: [
             const Icon(Icons.offline_bolt_outlined, size: 64, color: Colors.orangeAccent),
             const SizedBox(height: 16),
-            const Text(
-              'Server is offline or starting',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              l10n.get('serverOfflineOrStarting'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
             Text(
-              'Make sure "${server.name}" is installed and running properly to discover its tools.',
+              l10n.get('makeSureServerIsRunningToDiscover'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
@@ -134,14 +210,15 @@ class ServerToolsDialog extends StatelessWidget {
   }
 
   Widget _buildToolsList(BuildContext context, List<MCPTool> tools) {
+    final l10n = McpPlaygroundLocalizations.of(context);
     if (tools.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24.0),
           child: Text(
-            'No tools registered by this server.',
+            l10n.get('noToolsRegistered'),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: const TextStyle(color: Colors.grey),
           ),
         ),
       );
@@ -167,7 +244,7 @@ class ServerToolsDialog extends StatelessWidget {
             children: [
               if (tool.description != null && tool.description!.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                const Text('Description', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                Text(l10n.get('description'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const SizedBox(height: 4),
                 Text(tool.description!, style: const TextStyle(fontSize: 13)),
               ],
@@ -175,15 +252,15 @@ class ServerToolsDialog extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Input Schema', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                  Text(l10n.get('inputSchema'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                   IconButton(
                     icon: const Icon(Icons.copy, size: 16),
-                    tooltip: 'Copy JSON Schema',
+                    tooltip: l10n.get('copyJsonSchema'),
                     onPressed: () {
                       final rawJson = const JsonEncoder.withIndent('  ').convert(tool.inputSchema ?? {});
                       Clipboard.setData(ClipboardData(text: rawJson));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Schema copied to clipboard'), duration: Duration(seconds: 1)),
+                        SnackBar(content: Text(l10n.get('schemaCopied')), duration: const Duration(seconds: 1)),
                       );
                     },
                   ),

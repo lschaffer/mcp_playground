@@ -9,6 +9,7 @@ import 'remote_mcp_dialog.dart';
 import 'edit_mcp_dialog.dart';
 import 'llm_config_form.dart';
 import 'mcp_server_registry_tab.dart';
+import '../mcp_localizations.dart';
 
 class SettingsDrawer extends StatelessWidget {
   final PlaygroundController controller;
@@ -343,6 +344,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = McpPlaygroundLocalizations.of(context);
     final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     return DefaultTabController(
       length: isDesktop ? 3 : 2,
@@ -356,7 +358,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                   children: [
                     const Icon(Icons.settings_outlined),
                     const SizedBox(width: 8),
-                    Text('Playground Settings', style: theme.textTheme.titleMedium),
+                    Text(l10n.get('playgroundSettings'), style: theme.textTheme.titleMedium),
                     const Spacer(),
                     if (Navigator.of(context).canPop())
                       IconButton(
@@ -375,9 +377,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     icon: Icon(Icons.psychology_outlined),
                     text: 'LLM Settings',
                   ),
-                  const Tab(
-                    icon: Icon(Icons.hub_outlined),
-                    text: 'MCP Servers',
+                  Tab(
+                    icon: const Icon(Icons.hub_outlined),
+                    text: l10n.get('remoteMcpServers'),
                   ),
                   if (isDesktop)
                     const Tab(

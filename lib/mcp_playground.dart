@@ -14,6 +14,7 @@ import 'src/widgets/registered_tools_dialog.dart';
 import 'src/widgets/agent_inspector.dart';
 import 'src/widgets/llm_config_form.dart';
 import 'src/mcp_localizations.dart';
+import 'src/widgets/sub_prompt_list_editor.dart';
 
 /// Simple MIME-type lookup by file extension (replaces the `mime` package).
 String _mimeFromExtension(String name) {
@@ -87,6 +88,9 @@ class McpPlayground extends StatefulWidget {
   /// Optional builder to customize rendering of chat bubble message contents dynamically.
   final Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
 
+  /// Whether to print clean console logs for key events.
+  final bool enableLogging;
+
   /// Creates a new [McpPlayground] widget instance.
   const McpPlayground({
     super.key,
@@ -98,6 +102,7 @@ class McpPlayground extends StatefulWidget {
     this.disableConfigDialog = false,
     this.locale,
     this.messageContentBuilder,
+    this.enableLogging = false,
   });
 
   @override
@@ -163,6 +168,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       initialServers: widget.initialServers,
       customLocalTools: widget.customLocalTools,
       storageDelegate: widget.storageDelegate,
+      enableLogging: widget.enableLogging,
     );
     _controller.messageContentBuilder = widget.messageContentBuilder;
     _controller.addListener(_onStateChange);
@@ -233,7 +239,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     // Register all configs that are not in database yet
     for (final config in configsToRegister) {
-      await _controller.addServer(config);
+      await _controller.addServer(config, autoSelectTools: false);
     }
 
     if (serversToInstall.isEmpty) return;
@@ -414,18 +420,16 @@ class _McpPlaygroundState extends State<McpPlayground> {
     }
 
     for (final client in _controller.mcpClients) {
-      if (client.isConnected) {
-        final isExt = client.url.startsWith('http');
-        groups.add(
-          _ToolsetGroup(
-            name: client.label,
-            description: client.url,
-            tools: client.availableTools,
-            isExternal: isExt,
-            isInstalled: !isExt,
-          ),
-        );
-      }
+      final isExt = client.url.startsWith('http');
+      groups.add(
+        _ToolsetGroup(
+          name: client.label,
+          description: client.url,
+          tools: client.availableTools,
+          isExternal: isExt,
+          isInstalled: !isExt,
+        ),
+      );
     }
     return groups;
   }
@@ -436,297 +440,270 @@ class _McpPlaygroundState extends State<McpPlayground> {
   }
 
   void _showToolChecklistDialog() {
+    final isMobileView = MediaQuery.of(context).size.width < 600;
+
     showDialog(
       context: context,
-      builder: (ctx) {
+      barrierDismissible: false,
+      builder: (loadingCtx) => Center(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: Color(0xFF00ACC1)),
+                const SizedBox(width: 16),
+                Text(_l10n.get('discoveringAvailableTools')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    _controller.initializeAllUndiscoveredServers().then((_) {
+      if (mounted) {
+        Navigator.pop(context);
+      }
+      if (!mounted) return;
+
+      Widget buildSetupDialogContent(BuildContext ctx, StateSetter setDialogState) {
         final theme = Theme.of(context);
-        return ListenableBuilder(
-          listenable: _controller,
-          builder: (ctx, _) {
-            return StatefulBuilder(
-              builder: (context, setDialogState) {
-                final groups = _getToolsetGroups();
+        final groups = _getToolsetGroups();
 
-            final builtin = groups
-                .where((g) => !g.isExternal && !g.isInstalled)
-                .toList();
-            final external = groups.where((g) => g.isExternal).toList();
-            final installed = groups.where((g) => g.isInstalled).toList();
+        final builtin = groups
+            .where((g) => !g.isExternal && !g.isInstalled)
+            .toList();
+        final external = groups.where((g) => g.isExternal).toList();
+        final installed = groups.where((g) => g.isInstalled).toList();
 
-            Widget buildHeader(String title, IconData icon, Color color) {
-              return Padding(
-                padding: const EdgeInsets.only(
-                  top: 16.0,
-                  bottom: 8.0,
-                  left: 20.0,
-                  right: 20.0,
+        Widget buildHeader(String title, IconData icon, Color color) {
+          return Padding(
+            padding: const EdgeInsets.only(
+              top: 16.0,
+              bottom: 8.0,
+              left: 20.0,
+              right: 20.0,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 16, color: color),
-                    const SizedBox(width: 8),
-                    Text(
-                      title.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                        letterSpacing: 1.2,
+              ],
+            ),
+          );
+        }
+
+        Widget buildGroupTile(_ToolsetGroup group) {
+          final enabled = _controller.enabledToolNames;
+          final groupTools = group.tools;
+          final activeCount = groupTools.where((t) => enabled.contains(t.name)).length;
+          final totalCount = groupTools.length;
+
+          final allEnabled = groupTools.isNotEmpty && groupTools.every((t) => enabled.contains(t.name));
+          final noneEnabled = groupTools.every((t) => !enabled.contains(t.name));
+          bool? triStateVal;
+          if (allEnabled) {
+            triStateVal = true;
+          } else if (noneEnabled) {
+            triStateVal = false;
+          } else {
+            triStateVal = null; // Indeterminate
+          }
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 12.0,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        group.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            Widget buildGroupTile(_ToolsetGroup group) {
-              final isEnabled = _isToolsetEnabled(group);
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20.0,
-                  vertical: 12.0,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 4),
+                      Text(
+                        group.description,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
                         children: [
                           Text(
-                            group.name,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            group.description,
+                            '$activeCount/$totalCount tools active',
                             style: TextStyle(
-                              fontSize: 11.5,
+                              fontSize: 11,
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Checkbox(
-                      value: isEnabled,
-                      activeColor: const Color(0xFF00ACC1),
-                      onChanged: (val) {
-                        final targetVal = val ?? false;
-                        for (final t in group.tools) {
-                          _controller.toggleToolEnabled(t.name, targetVal);
-                        }
-                        setDialogState(() {});
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              title: const Text(
-                'Select Tools',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              content: SizedBox(
-                width: 480,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    ...builtin.map(buildGroupTile),
-                    if (external.isNotEmpty) ...[
-                      buildHeader(
-                        'External MCP Servers',
-                        Icons.dns,
-                        Colors.orange,
-                      ),
-                      ...external.map(buildGroupTile),
-                    ],
-                    if (installed.isNotEmpty) ...[
-                      buildHeader(
-                        'Installed MCP Servers',
-                        Icons.hub,
-                        Colors.teal,
-                      ),
-                      ...installed.map(buildGroupTile),
-                    ],
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF00ACC1),
-                  ),
-                  child: const Text('OK'),
-                ),
-              ],
-            );
-          },
-        );
-          },
-        );
-      },
-    );
-  }
-
-  void _showChatToolsChecklistDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final theme = Theme.of(context);
-            final groups = _getToolsetGroups()
-                .where((g) => _isToolsetEnabled(g))
-                .toList();
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              title: const Text(
-                'Select Active Tools',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              content: SizedBox(
-                width: 480,
-                child: groups.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: Text(
-                          'No toolsets selected or active. Change toolsets on the setup screen.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: groups.length,
-                        itemBuilder: (context, gIdx) {
-                          final group = groups[gIdx];
-                          final enabled = _controller.enabledToolNames;
-                          final groupTools = group.tools;
-
-                          // Check if all tools in group are enabled
-                          final allEnabled = groupTools.every(
-                            (t) => enabled.contains(t.name),
-                          );
-                          final noneEnabled = groupTools.every(
-                            (t) => !enabled.contains(t.name),
-                          );
-
-                          bool? triStateVal;
-                          if (allEnabled) {
-                            triStateVal = true;
-                          } else if (noneEnabled) {
-                            triStateVal = false;
-                          } else {
-                            triStateVal = null; // Indeterminate
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Group header with select all/none checkbox
-                              Container(
-                                color: theme.colorScheme.surfaceContainerHighest
-                                    .withValues(alpha: 0.5),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Checkbox(
-                                      value: triStateVal,
-                                      tristate: true,
-                                      activeColor: const Color(0xFF00ACC1),
-                                      onChanged: (val) {
-                                        final targetVal = val ?? false;
-                                        setDialogState(() {
-                                          for (final t in groupTools) {
-                                            _controller.toggleToolEnabled(
-                                              t.name,
-                                              targetVal,
-                                            );
-                                          }
-                                        });
-                                        setState(() {});
-                                      },
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      group.name,
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ],
+                          if (totalCount > 1) ...[
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () {
+                                _showIndividualToolsDialog(group);
+                              },
+                              child: const Text(
+                                'Customize',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF00ACC1),
+                                  fontWeight: FontWeight.bold,
+                                  decoration: TextDecoration.underline,
                                 ),
                               ),
-                              // Tools in this group
-                              ...groupTools.map((t) {
-                                final isEnabled = enabled.contains(t.name);
-                                return CheckboxListTile(
-                                  value: isEnabled,
-                                  activeColor: const Color(0xFF00ACC1),
-                                  title: Text(
-                                    t.name,
-                                    style: const TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    t.description ?? 'No description.',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  onChanged: (val) {
-                                    setDialogState(() {
-                                      _controller.toggleToolEnabled(
-                                        t.name,
-                                        val == true,
-                                      );
-                                    });
-                                    setState(() {});
-                                  },
-                                );
-                              }),
-                            ],
-                          );
-                        },
+                            ),
+                          ],
+                        ],
                       ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('OK'),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Checkbox(
+                  value: triStateVal,
+                  tristate: true,
+                  activeColor: const Color(0xFF00ACC1),
+                  onChanged: (val) {
+                    final target = val ?? false;
+                    setState(() {
+                      _controller.toggleToolsEnabled(groupTools.map((t) => t.name), target);
+                    });
+                  },
                 ),
               ],
+            ),
+          );
+        }
+
+        return ListView(
+          shrinkWrap: true,
+          children: [
+            if (builtin.isNotEmpty) ...[
+              buildHeader(
+                'Built-in Tools',
+                Icons.extension,
+                theme.colorScheme.primary,
+              ),
+              ...builtin.map(buildGroupTile),
+            ],
+            if (external.isNotEmpty) ...[
+              buildHeader(
+                'External MCP Servers (SSE/HTTP)',
+                Icons.dns,
+                Colors.orange,
+              ),
+              ...external.map(buildGroupTile),
+            ],
+            if (installed.isNotEmpty) ...[
+              buildHeader(
+                'Installed MCP Servers',
+                Icons.hub,
+                Colors.teal,
+              ),
+              ...installed.map(buildGroupTile),
+            ],
+          ],
+        );
+      }
+
+      if (isMobileView) {
+        showDialog(
+          context: context,
+          builder: (ctx) {
+            return Dialog.fullscreen(
+              child: Scaffold(
+                appBar: AppBar(
+                  title: const Text('Select Tools'),
+                  leading: IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('OK', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+                body: ListenableBuilder(
+                  listenable: _controller,
+                  builder: (ctx2, _) {
+                    return StatefulBuilder(
+                      builder: (context, setDialogState) =>
+                          buildSetupDialogContent(ctx, setDialogState),
+                    );
+                  },
+                ),
+              ),
             );
           },
         );
-      },
-    );
+      } else {
+        showDialog(
+          context: context,
+          builder: (ctx) {
+            return ListenableBuilder(
+              listenable: _controller,
+              builder: (ctx2, _) {
+                return StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    return AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      title: const Text(
+                        'Select Tools',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      content: SizedBox(
+                        width: 480,
+                        child: buildSetupDialogContent(ctx, setDialogState),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF00ACC1),
+                          ),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      }
+    });
   }
 
   void _showIndividualToolsDialog(_ToolsetGroup group) {
@@ -736,6 +713,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final enabled = _controller.enabledToolNames;
+            final sortedTools = List<MCPTool>.from(group.tools)
+              ..sort((a, b) => a.name.compareTo(b.name));
             return AlertDialog(
               title: Text(
                 'Select tools from ${group.name}',
@@ -749,10 +728,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
                 width: 400,
                 child: ListView(
                   shrinkWrap: true,
-                  children: group.tools.map((t) {
+                  children: sortedTools.map((t) {
                     final isEnabled = enabled.contains(t.name);
                     return CheckboxListTile(
                       value: isEnabled,
+                      activeColor: const Color(0xFF00ACC1),
                       title: Text(
                         t.name,
                         style: const TextStyle(
@@ -1015,14 +995,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                           }
 
                           // Load tool selections
-                          final allTools = _getToolsetGroups()
-                              .expand((g) => g.tools)
-                              .map((t) => t.name)
-                              .toList();
-                          for (final t in allTools) {
-                            final enable = setup.enabledToolNames.contains(t);
-                            _controller.toggleToolEnabled(t, enable);
-                          }
+                          _controller.updateEnabledTools(setup.enabledToolNames.toSet());
 
                           if (_playgroundStarted) {
                             _controller.systemPrompt = setup.systemPrompt;
@@ -1314,9 +1287,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             deleteIcon: const Icon(Icons.close, size: 14),
                             onDeleted: () {
                               setState(() {
-                                for (final t in group.tools) {
-                                  _controller.toggleToolEnabled(t.name, false);
-                                }
+                                _controller.toggleToolsEnabled(group.tools.map((t) => t.name), false);
                               });
                             },
                             onPressed: () {
@@ -1564,14 +1535,20 @@ class _McpPlaygroundState extends State<McpPlayground> {
             'Initial Prompt (Optional first message)',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           ),
-          TextFormField(
+          SubPromptListEditor(
             controller: _initialPromptCtrl,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText:
-                  'Enter an optional first message to execute immediately on launch...',
-              border: OutlineInputBorder(),
-            ),
+            chatMode: _chatMode,
+            availableToolGroups: _getToolsetGroups()
+                .where((g) => _isToolsetEnabled(g))
+                .map((g) => ToolGroup(
+                      name: g.name,
+                      toolNames: g.tools.map((t) => t.name).toList(),
+                    ))
+                .toList(),
+            minLines: 2,
+            maxLines: 8,
+            hintText:
+                'Enter an optional first message to execute immediately on launch...',
           ),
 
           const SizedBox(height: 12),
@@ -1775,25 +1752,19 @@ class _McpPlaygroundState extends State<McpPlayground> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildAttachmentPreviews(),
-              TextField(
+              SubPromptListEditor(
                 controller: _inputCtrl,
-                maxLines: 4,
+                chatMode: _chatMode,
+                availableToolGroups: _getToolsetGroups()
+                    .where((g) => _isToolsetEnabled(g))
+                    .map((g) => ToolGroup(
+                          name: g.name,
+                          toolNames: g.tools.map((t) => t.name).toList(),
+                        ))
+                    .toList(),
                 minLines: 1,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _handleSend(),
-                decoration: const InputDecoration(
-                  hintText: 'Type a message or ask a tool to run...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                ),
-                onChanged: (text) {
-                  setState(() {});
-                },
+                maxLines: 6,
+                hintText: 'Type a message or ask a tool to run...',
               ),
               const SizedBox(height: 8),
               Row(
@@ -1802,30 +1773,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
                     icon: const Icon(Icons.attach_file_outlined),
                     tooltip: 'Attach Files / Images',
                     onPressed: _pickAttachments,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.build_outlined),
-                    tooltip: 'Active Tools Checklist',
-                    onPressed: _showChatToolsChecklistDialog,
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      _controller.stopAfterToolCall
-                          ? Icons.flag
-                          : Icons.flag_outlined,
-                      color: _controller.stopAfterToolCall
-                          ? theme.colorScheme.error
-                          : null,
-                    ),
-                    tooltip: _controller.stopAfterToolCall
-                        ? 'Stop after tool execution: ON'
-                        : 'Stop after tool execution: OFF',
-                    onPressed: () {
-                      setState(() {
-                        _controller.stopAfterToolCall =
-                            !_controller.stopAfterToolCall;
-                      });
-                    },
                   ),
                   const Spacer(),
                   IconButton(
@@ -2323,9 +2270,9 @@ class _InitialMcpInstallProgressDialogState
         setState(() {
           _statusMessage = l10n.get('preparingRuntime');
         });
+        _runInstallations();
       }
     });
-    _runInstallations();
   }
 
   Future<void> _runInstallations() async {

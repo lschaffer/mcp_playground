@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../models.dart';
 import '../../playground_controller.dart';
@@ -158,20 +159,27 @@ class _AgentInspectorState extends State<AgentInspector> {
       }
       switch (msg.role) {
         case ChatRole.system:
-          if (msg.content.trim().isNotEmpty) {
+          final content = msg.content.trim();
+          if (content.isNotEmpty) {
+            final oneLine = content.replaceAll('\n', ' ');
+            final preview = oneLine.length > 80
+                ? '${oneLine.substring(0, 80)}...'
+                : oneLine;
             entries.add(_LogEntry(
               type: 'system',
-              text: 'System instructions initialized',
-              details: msg.content,
+              text: 'System prompt: $preview',
+              details: content,
               timestamp: msg.timestamp,
             ));
           }
           break;
         case ChatRole.user:
-          if (msg.content.trim().isNotEmpty) {
+          final content = msg.content.trim();
+          if (content.isNotEmpty) {
             entries.add(_LogEntry(
               type: 'user',
-              text: 'User prompt: ${msg.content}',
+              text: 'User prompt: $content',
+              details: content.length > 80 ? content : null,
               timestamp: msg.timestamp,
             ));
           }
@@ -180,17 +188,28 @@ class _AgentInspectorState extends State<AgentInspector> {
           final content = msg.content.trim();
           if (content.isNotEmpty) {
             if (msg.type == MessageType.toolCall) {
+              final argsRaw = msg.toolArguments != null ? jsonEncode(msg.toolArguments) : '';
+              final argsPreview = argsRaw.length > 100
+                  ? '${argsRaw.substring(0, 100)}...'
+                  : argsRaw;
+              final toolText = argsPreview.isNotEmpty
+                  ? 'Called tool: ${msg.toolName}($argsPreview)'
+                  : 'Called tool: ${msg.toolName ?? 'Tool'}';
               entries.add(_LogEntry(
                 type: 'tool_call',
-                text: 'Called tool: ${msg.toolName}',
-                details: 'Arguments: ${msg.toolArguments}',
+                text: toolText,
+                details: argsRaw.isNotEmpty ? argsRaw : null,
                 timestamp: msg.timestamp,
               ));
             } else {
+              final oneLine = content.replaceAll('\n', ' ');
+              final preview = oneLine.length > 80
+                  ? '${oneLine.substring(0, 80)}...'
+                  : oneLine;
               entries.add(_LogEntry(
                 type: 'assistant',
-                text: content.length > 80 ? '${content.substring(0, 80)}...' : content,
-                details: content,
+                text: preview,
+                details: content.length > 80 ? content : null,
                 timestamp: msg.timestamp,
               ));
             }
@@ -198,10 +217,17 @@ class _AgentInspectorState extends State<AgentInspector> {
           break;
         case ChatRole.tool:
           final resultText = msg.content.trim();
+          final oneLine = resultText.replaceAll('\n', ' ');
+          final resultPreview = oneLine.length > 150
+              ? '${oneLine.substring(0, 150)}...'
+              : oneLine;
+          final displayText = resultPreview.isNotEmpty
+              ? '→ $resultPreview'
+              : 'Executed.';
           entries.add(_LogEntry(
             type: 'tool_response',
-            text: 'Tool Result [${resultText.length} chars]',
-            details: resultText,
+            text: displayText,
+            details: resultText.isNotEmpty ? resultText : null,
             timestamp: msg.timestamp,
           ));
           break;
@@ -435,8 +461,7 @@ class _AgentInspectorState extends State<AgentInspector> {
                                   icon = Icons.smart_toy;
                                   iconColor = Colors.blue;
                                 }
-
-                                return ListTile(
+                                 return ListTile(
                                   dense: true,
                                   leading: Icon(icon, size: 16, color: iconColor),
                                   title: Text(
@@ -447,16 +472,57 @@ class _AgentInspectorState extends State<AgentInspector> {
                                     _formatTimestamp(entry.timestamp),
                                     style: const TextStyle(fontSize: 10, color: Colors.grey),
                                   ),
+                                  trailing: entry.details != null
+                                      ? IconButton(
+                                          icon: const Icon(Icons.open_in_full, size: 14),
+                                          tooltip: 'Expand log details',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (c) => AlertDialog(
+                                                title: Text(
+                                                  entry.type == 'system'
+                                                      ? 'System Prompt'
+                                                      : 'Log Details',
+                                                ),
+                                                content: SingleChildScrollView(
+                                                  child: SelectableText(
+                                                    entry.details!,
+                                                    style: const TextStyle(
+                                                      fontFamily: 'monospace',
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(c),
+                                                    child: const Text('Close'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      : null,
                                   onTap: entry.details != null
                                       ? () {
                                           showDialog(
                                             context: context,
                                             builder: (c) => AlertDialog(
-                                              title: const Text('Log Details'),
+                                              title: Text(
+                                                entry.type == 'system'
+                                                    ? 'System Prompt'
+                                                    : 'Log Details',
+                                              ),
                                               content: SingleChildScrollView(
                                                 child: SelectableText(
                                                   entry.details!,
-                                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                                                  style: const TextStyle(
+                                                    fontFamily: 'monospace',
+                                                    fontSize: 12,
+                                                  ),
                                                 ),
                                               ),
                                               actions: [

@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models.dart';
 import '../../playground_controller.dart';
 import '../local_mcp_client.dart';
@@ -15,12 +18,249 @@ class McpServerRegistryTab extends StatefulWidget {
 }
 
 class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
-  int _activeTab = 0; // 0 = My Servers, 1 = GitHub
+  int _activeTab = 0; // 0 = My Servers, 1 = Registry
   String _searchQuery = '';
   String _selectedCategory = 'all';
-  String _selectedMethod = 'all'; // 'all', 'uvx', 'pip', 'npm'
+  String _selectedMethod = 'all'; // 'all', 'uvx', 'pip', 'npm', 'sse'
+  bool _loadingGithub = false;
+  bool _loadingMore = false;
+  String? _nextCursor;
+  final ScrollController _scrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _githubRegistry = [
+  @override
+  void initState() {
+    super.initState();
+    _loadGithubRegistry();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreServers();
+    }
+  }
+
+  static const _registryCacheKey = 'official_mcp_registry_cache';
+  static const _registryCacheTsKey = 'official_mcp_registry_cache_ts';
+  static const _registryRemoteUrl = 'https://registry.modelcontextprotocol.io/v0.1/servers?limit=100';
+  static const _cacheMaxAge = Duration(hours: 24);
+
+  Future<void> _loadGithubRegistry({bool forceRefresh = false}) async {
+    if (forceRefresh) {
+      _nextCursor = null;
+    }
+    // Populate with fallback initially so it's not empty while loading or if offline
+    if (_githubRegistry.isEmpty) {
+      _githubRegistry.addAll(_fallbackRegistry);
+    }
+
+    // 1. Try to read from cache first (if not forcing refresh)
+    if (!forceRefresh) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final ts = prefs.getInt(_registryCacheTsKey);
+        final cachedJson = prefs.getString(_registryCacheKey);
+        if (ts != null && cachedJson != null) {
+          final age = DateTime.now().millisecondsSinceEpoch - ts;
+          if (age < _cacheMaxAge.inMilliseconds) {
+            final decoded = jsonDecode(cachedJson);
+            final list = _parseFetchedRegistry(decoded);
+            String? nextCursor;
+            if (decoded is Map && decoded.containsKey('metadata')) {
+              nextCursor = decoded['metadata']['nextCursor'] as String?;
+            }
+            if (list.isNotEmpty) {
+              setState(() {
+                _githubRegistry.clear();
+                _githubRegistry.addAll(_fallbackRegistry);
+                _githubRegistry.addAll(list);
+                _nextCursor = nextCursor;
+              });
+              return;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fetch remote registry
+    if (mounted) {
+      setState(() {
+        _loadingGithub = true;
+      });
+    }
+    try {
+      final response = await http.get(
+        Uri.parse(_registryRemoteUrl),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final list = _parseFetchedRegistry(decoded);
+        String? nextCursor;
+        if (decoded is Map && decoded.containsKey('metadata')) {
+          nextCursor = decoded['metadata']['nextCursor'] as String?;
+        }
+        if (list.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_registryCacheKey, response.body);
+          await prefs.setInt(_registryCacheTsKey, DateTime.now().millisecondsSinceEpoch);
+
+          if (mounted) {
+            setState(() {
+              _githubRegistry.clear();
+              _githubRegistry.addAll(_fallbackRegistry);
+              _githubRegistry.addAll(list);
+              _nextCursor = nextCursor;
+            });
+          }
+        }
+      } else {
+        throw Exception('HTTP status ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[McpServerRegistryTab] Failed to fetch remote registry: $e');
+      // If fetching fails and we don't have remote content, keep the fallback/cached list
+      if (mounted && _githubRegistry.length <= _fallbackRegistry.length) {
+        setState(() {
+          _githubRegistry.clear();
+          _githubRegistry.addAll(_fallbackRegistry);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingGithub = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreServers() async {
+    if (_nextCursor == null || _loadingMore) return;
+    setState(() {
+      _loadingMore = true;
+    });
+    try {
+      final url = '$_registryRemoteUrl&cursor=${Uri.encodeComponent(_nextCursor!)}';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final list = _parseFetchedRegistry(decoded);
+        String? nextCursor;
+        if (decoded is Map && decoded.containsKey('metadata')) {
+          nextCursor = decoded['metadata']['nextCursor'] as String?;
+        }
+        if (list.isNotEmpty) {
+          setState(() {
+            _githubRegistry.addAll(list);
+            _nextCursor = nextCursor;
+          });
+        }
+      } else {
+        throw Exception('HTTP status ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[McpServerRegistryTab] Failed to load more servers: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+        });
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _parseFetchedRegistry(dynamic decoded) {
+    if (decoded is Map && decoded.containsKey('servers')) {
+      final list = decoded['servers'] as List<dynamic>;
+      final parsedList = <Map<String, dynamic>>[];
+      for (final entry in list) {
+        if (entry is! Map) continue;
+        final s = entry['server'];
+        if (s is! Map) continue;
+
+        final name = s['name'] as String? ?? '';
+        final title = s['title'] as String? ?? name;
+        final description = s['description'] as String? ?? '';
+
+        String installType = 'npm';
+        String language = 'nodejs';
+        String entryPoint = name;
+        String githubUrl = 'https://github.com/modelcontextprotocol/servers';
+        List<dynamic> launchArgs = [];
+        List<dynamic> requiredEnvVars = [];
+
+        final remotes = s['remotes'] as List<dynamic>?;
+        bool isSse = false;
+        if (remotes != null && remotes.isNotEmpty) {
+          final firstRemote = remotes[0];
+          if (firstRemote is Map) {
+            final remoteType = firstRemote['type'] as String? ?? '';
+            if (remoteType == 'streamable-http' || remoteType == 'sse') {
+              isSse = true;
+            }
+          }
+        }
+        if (isSse) {
+          continue; // Skip remote SSE servers entirely
+        }
+
+        parsedList.add({
+          "name": name,
+          "displayName": title,
+          "description": description,
+          "githubUrl": githubUrl,
+          "language": language,
+          "installType": installType,
+          "packageName": name,
+          "entryPoint": entryPoint,
+          "launchArgs": launchArgs,
+          "requiredEnvVars": requiredEnvVars,
+          "category": _guessCategory(name, description)
+        });
+      }
+      return parsedList;
+    }
+    return [];
+  }
+
+  static String _guessCategory(String name, String description) {
+    final combined = '$name $description'.toLowerCase();
+    if (combined.contains('file') || combined.contains('directory') || combined.contains('git')) {
+      return 'files';
+    }
+    if (combined.contains('db') || combined.contains('sql') || combined.contains('postgres') || combined.contains('mongo') || combined.contains('sqlite')) {
+      return 'databases';
+    }
+    if (combined.contains('web') || combined.contains('fetch') || combined.contains('search') || combined.contains('browser')) {
+      return 'web';
+    }
+    if (combined.contains('time') || combined.contains('slack') || combined.contains('todo') || combined.contains('productivity')) {
+      return 'productivity';
+    }
+    return 'other';
+  }
+
+  final List<Map<String, dynamic>> _githubRegistry = [];
+
+  static const List<Map<String, dynamic>> _fallbackRegistry = [
     {
       "name": "mcp-server-filesystem",
       "displayName": "Filesystem",
@@ -179,8 +419,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
     }
   ];
 
-  List<McpServerConfig> get _myServers =>
-      widget.controller.servers.where((s) => s.isLocal).toList();
+  List<McpServerConfig> get _myServers => widget.controller.servers;
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +427,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Tab switcher (My Servers / GitHub)
+        // Tab switcher (My Servers / Registry)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Row(
@@ -206,8 +445,8 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                     ),
                     ButtonSegment<int>(
                       value: 1,
-                      label: Text('GitHub'),
-                      icon: Icon(Icons.code_outlined),
+                      label: Text('Registry'),
+                      icon: Icon(Icons.public_outlined),
                     ),
                   ],
                   selected: {_activeTab},
@@ -228,7 +467,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
             duration: const Duration(milliseconds: 200),
             child: _activeTab == 0
                 ? _buildMyServersTab(theme)
-                : _buildGithubTab(theme),
+                : _buildRegistryTab(theme),
           ),
         ),
       ],
@@ -248,7 +487,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Configured Local Servers',
+                'Configured Servers',
                 style: theme.textTheme.titleSmall,
               ),
               ElevatedButton.icon(
@@ -267,7 +506,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
           child: servers.isEmpty
               ? const Center(
                   child: Text(
-                    'No manual local servers configured yet.\nClick "Install Manually" to get started.',
+                    'No servers configured yet.\nClick "Install Manually" or browse the "Registry" tab to connect to servers.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey),
                   ),
@@ -312,7 +551,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        server.localPackage ?? 'Custom Local Server',
+                                        server.localPackage ?? (server.isLocal ? 'Custom Local Server' : 'Remote SSE Server'),
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey,
@@ -357,7 +596,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                             Wrap(
                               spacing: 8,
                               children: [
-                                _buildBadge(server.localInstallMethod?.toUpperCase() ?? 'LOCAL'),
+                                _buildBadge(server.localInstallMethod?.toUpperCase() ?? (server.isLocal ? 'LOCAL' : 'REMOTE SSE')),
                                 if (server.isInstalled) _buildBadge('INSTALLED', color: Colors.green),
                               ],
                             ),
@@ -372,9 +611,9 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
     );
   }
 
-  // ─── GitHub Tab ────────────────────────────────────────────────────────────
+  // ─── Registry Tab ──────────────────────────────────────────────────────────
 
-  Widget _buildGithubTab(ThemeData theme) {
+  Widget _buildRegistryTab(ThemeData theme) {
     // Categories and Methods lists
     final categories = ['all', 'files', 'databases', 'web', 'productivity', 'other'];
     final methods = ['all', 'uvx', 'pip', 'npm'];
@@ -443,25 +682,51 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
 
         // Search box
         Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: TextField(
-            onChanged: (val) {
-              setState(() {
-                _searchQuery = val;
-              });
-            },
-            decoration: InputDecoration(
-              hintText: 'Search servers...',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search servers...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
+              const SizedBox(width: 8),
+              if (_loadingGithub)
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF00ACC1),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Color(0xFF00ACC1)),
+                  tooltip: 'Refresh catalog from online registry',
+                  onPressed: () => _loadGithubRegistry(forceRefresh: true),
+                ),
+            ],
           ),
         ),
-
-        // List
         Expanded(
           child: filtered.isEmpty
               ? const Center(
@@ -470,143 +735,166 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  itemCount: filtered.length,
-                  itemBuilder: (ctx, idx) {
-                    final item = filtered[idx];
-                    final packageName = item['packageName'] as String;
-                    final installType = item['installType'] as String;
-                    final language = item['language'] as String;
-
-                    // Check if installed in controller
-                    final installedIndex = _myServers.indexWhere(
-                      (s) => s.localPackage == packageName,
-                    );
-                    final isInstalled = installedIndex != -1;
-                    final installedServer = isInstalled ? _myServers[installedIndex] : null;
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isInstalled
-                              ? const Color(0xFF7C3AED).withValues(alpha: 0.3)
-                              : Colors.grey.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      child: ExpansionTile(
-                        leading: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: theme.colorScheme.secondaryContainer,
-                          child: Icon(_iconForCategory(item['category']), size: 18),
-                        ),
-                        title: Row(
-                          children: [
-                            Text(
-                              item['displayName'] as String,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(width: 8),
-                            if (isInstalled && installedServer!.enabled)
-                              _buildBadge('ACTIVE', color: Colors.purple)
-                          ],
-                        ),
-                        subtitle: Row(
-                          children: [
-                            _buildBadge(language.toUpperCase()),
-                            const SizedBox(width: 4),
-                            _buildBadge(installType.toUpperCase()),
-                            if (isInstalled) ...[
-                              const SizedBox(width: 4),
-                              _buildBadge('INSTALLED', color: Colors.green),
-                            ]
-                          ],
-                        ),
-                        childrenPadding: const EdgeInsets.all(16),
-                        expandedAlignment: Alignment.topLeft,
-                        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            item['description'] as String,
-                            style: const TextStyle(fontSize: 13, height: 1.4),
-                          ),
-                          const SizedBox(height: 8),
-                          InkWell(
-                            onTap: () {}, // Link click handled by context URL if copyable
-                            child: SelectableText(
-                              item['githubUrl'] as String,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: theme.colorScheme.primary,
-                                decoration: TextDecoration.underline,
+              : RefreshIndicator(
+                  onRefresh: () => _loadGithubRegistry(forceRefresh: true),
+                  color: const Color(0xFF00ACC1),
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    itemCount: filtered.length + (_loadingMore ? 1 : 0),
+                    itemBuilder: (ctx, idx) {
+                      if (idx == filtered.length) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF00ACC1),
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        );
+                      }
+                      final item = filtered[idx];
+                      final packageName = item['packageName'] as String;
+                      final installType = item['installType'] as String;
+                      final language = item['language'] as String;
+
+                      // Check if installed in controller
+                      final installedIndex = _myServers.indexWhere(
+                        (s) => s.isLocal
+                            ? s.localPackage == packageName
+                            : s.url == item['entryPoint'],
+                      );
+                      final isInstalled = installedIndex != -1;
+                      final installedServer = isInstalled ? _myServers[installedIndex] : null;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isInstalled
+                                ? const Color(0xFF7C3AED).withValues(alpha: 0.3)
+                                : Colors.grey.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        child: ExpansionTile(
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: theme.colorScheme.secondaryContainer,
+                            child: Icon(_iconForCategory(item['category']), size: 18),
+                          ),
+                          title: Row(
                             children: [
-                              if (isInstalled) ...[
-                                Row(
-                                  children: [
-                                    ElevatedButton.icon(
-                                      onPressed: () => _confirmDelete(installedServer!),
-                                      icon: const Icon(Icons.delete_outline),
-                                      label: const Text('Remove'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red[900],
-                                        foregroundColor: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    OutlinedButton.icon(
-                                      onPressed: () => ServerToolsDialog.show(
-                                        context,
-                                        installedServer!,
-                                        widget.controller,
-                                      ),
-                                      icon: const Icon(Icons.list_alt_outlined),
-                                      label: const Text('Discover Tools'),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(0xFF7C3AED),
-                                        side: const BorderSide(color: Color(0xFF7C3AED)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Row(
-                                  children: [
-                                    const Text('Active: '),
-                                    Switch(
-                                      value: installedServer!.enabled,
-                                      onChanged: (val) {
-                                        widget.controller.updateServer(
-                                          installedServer.copyWith(enabled: val),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ] else ...[
-                                const Spacer(),
-                                ElevatedButton.icon(
-                                  onPressed: () => _triggerInstall(item),
-                                  icon: const Icon(Icons.download_outlined),
-                                  label: const Text('Install'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF7C3AED),
-                                    foregroundColor: Colors.white,
-                                  ),
-                                ),
-                              ],
+                              Text(
+                                item['displayName'] as String,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                              if (isInstalled && installedServer!.enabled)
+                                _buildBadge('ACTIVE', color: Colors.purple)
                             ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                          subtitle: Row(
+                            children: [
+                              _buildBadge(language.toUpperCase()),
+                              const SizedBox(width: 4),
+                              _buildBadge(installType.toUpperCase()),
+                              if (isInstalled) ...[
+                                const SizedBox(width: 4),
+                                _buildBadge('INSTALLED', color: Colors.green),
+                              ]
+                            ],
+                          ),
+                          childrenPadding: const EdgeInsets.all(16),
+                          expandedAlignment: Alignment.topLeft,
+                          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              item['description'] as String,
+                              style: const TextStyle(fontSize: 13, height: 1.4),
+                            ),
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: () {}, // Link click handled by context URL if copyable
+                              child: SelectableText(
+                                item['githubUrl'] as String,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: theme.colorScheme.primary,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                if (isInstalled) ...[
+                                  Row(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: () => _confirmDelete(installedServer!),
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text('Remove'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red[900],
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      OutlinedButton.icon(
+                                        onPressed: () => ServerToolsDialog.show(
+                                          context,
+                                          installedServer!,
+                                          widget.controller,
+                                        ),
+                                        icon: const Icon(Icons.list_alt_outlined),
+                                        label: const Text('Discover Tools'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: const Color(0xFF7C3AED),
+                                          side: const BorderSide(color: Color(0xFF7C3AED)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      const Text('Active: '),
+                                      Switch(
+                                        value: installedServer!.enabled,
+                                        onChanged: (val) {
+                                          widget.controller.updateServer(
+                                            installedServer.copyWith(enabled: val),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ] else ...[
+                                  const Spacer(),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _triggerInstall(item),
+                                    icon: const Icon(Icons.download_outlined),
+                                    label: const Text('Install'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF7C3AED),
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
         ),
       ],
@@ -654,6 +942,26 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
   }
 
   void _triggerInstall(Map<String, dynamic> registryItem) {
+    final installType = registryItem['installType'] as String;
+    final isLocal = installType != 'sse';
+
+    if (!isLocal) {
+      final config = McpServerConfig(
+        id: const Uuid().v4(),
+        name: registryItem['displayName'] as String,
+        url: registryItem['entryPoint'] as String,
+        isLocal: false,
+        isInstalled: true,
+        enabled: true,
+        description: registryItem['description'] as String,
+      );
+      widget.controller.addServer(config);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connected to remote server: ${config.name}')),
+      );
+      return;
+    }
+
     // Generate base config
     final config = McpServerConfig(
       id: const Uuid().v4(),

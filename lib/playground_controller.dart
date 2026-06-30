@@ -30,6 +30,24 @@ abstract class McpPlaygroundStorageDelegate {
 
   /// Loads the list of user-created configuration setups.
   Future<List<SavedPlaygroundSetup>> loadSetups();
+
+  /// Saves the active enabled tool names.
+  Future<void> saveEnabledTools(Set<String> tools) async {}
+
+  /// Loads the saved enabled tool names.
+  Future<Set<String>> loadEnabledTools() async => {};
+
+  /// Saves the set of initialized client IDs.
+  Future<void> saveInitializedClients(Set<String> clients) async {}
+
+  /// Loads the set of initialized client IDs.
+  Future<Set<String>> loadInitializedClients() async => {};
+
+  /// Saves cached tools list for a server ID.
+  Future<void> saveCachedServerTools(String serverId, List<MCPTool> tools) async {}
+
+  /// Loads cached tools list for a server ID.
+  Future<List<MCPTool>> loadCachedServerTools(String serverId) async => [];
 }
 
 /// A default implementation of [McpPlaygroundStorageDelegate] using SharedPreferences.
@@ -37,6 +55,8 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   static const _kLlm = 'mcp_playground_llm_config';
   static const _kServers = 'mcp_playground_servers';
   static const _kSetups = 'mcp_playground_saved_setups';
+  static const _kEnabledTools = 'mcp_playground_enabled_tools';
+  static const _kInitializedClients = 'mcp_playground_initialized_clients';
 
   @override
   Future<void> saveLlmConfig(LlmConfig config) async {
@@ -102,6 +122,54 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
       return [];
     }
   }
+
+  @override
+  Future<void> saveEnabledTools(Set<String> tools) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kEnabledTools, tools.toList());
+  }
+
+  @override
+  Future<Set<String>> loadEnabledTools() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_kEnabledTools);
+    return list?.toSet() ?? {};
+  }
+
+  @override
+  Future<void> saveInitializedClients(Set<String> clients) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kInitializedClients, clients.toList());
+  }
+
+  @override
+  Future<Set<String>> loadInitializedClients() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_kInitializedClients);
+    return list?.toSet() ?? {};
+  }
+
+  static const _kCachedServerTools = 'mcp_playground_cached_server_tools';
+
+  @override
+  Future<void> saveCachedServerTools(String serverId, List<MCPTool> tools) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = tools.map((t) => t.toJson()).toList();
+    await prefs.setString('${_kCachedServerTools}_$serverId', jsonEncode(list));
+  }
+
+  @override
+  Future<List<MCPTool>> loadCachedServerTools(String serverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('${_kCachedServerTools}_$serverId');
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list.map((item) => MCPTool.fromJson(item as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }
 
 /// Controller managing the state of the AI Agent Playground, chat messages, active tool loop execution, and server manager.
@@ -117,6 +185,9 @@ class PlaygroundController extends ChangeNotifier {
   String? _errorMessage;
   bool _stopAfterToolCall = false;
   final Set<String> _enabledToolNames = {};
+  final Set<String> _initializedClientIds = {};
+  final bool enableLogging;
+  bool _isInitializing = false;
   
   /// Optional builder to customize rendering of chat bubble message contents dynamically.
   Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
@@ -157,6 +228,7 @@ class PlaygroundController extends ChangeNotifier {
     List<McpServerConfig>? initialServers,
     List<McpLocalTool>? customLocalTools,
     McpPlaygroundStorageDelegate? storageDelegate,
+    this.enableLogging = false,
   }) : _llmConfig =
            initialLlmConfig ??
            const LlmConfig(provider: LlmProvider.none, model: '', apiKey: ''),
@@ -235,6 +307,27 @@ class PlaygroundController extends ChangeNotifier {
     } else {
       _enabledToolNames.remove(toolName);
     }
+    _storage.saveEnabledTools(_enabledToolNames);
+    _syncMcpServers();
+    notifyListeners();
+  }
+
+  void toggleToolsEnabled(Iterable<String> toolNames, bool enabled) {
+    if (enabled) {
+      _enabledToolNames.addAll(toolNames);
+    } else {
+      _enabledToolNames.removeAll(toolNames);
+    }
+    _storage.saveEnabledTools(_enabledToolNames);
+    _syncMcpServers();
+    notifyListeners();
+  }
+
+  void updateEnabledTools(Set<String> toolNames) {
+    _enabledToolNames.clear();
+    _enabledToolNames.addAll(toolNames);
+    _storage.saveEnabledTools(_enabledToolNames);
+    _syncMcpServers();
     notifyListeners();
   }
 
@@ -253,13 +346,22 @@ class PlaygroundController extends ChangeNotifier {
         _servers.clear();
         _servers.addAll(savedServers);
       }
+      _isInitializing = true;
       final setups = await _storage.loadSetups();
       _savedSetups.clear();
       _savedSetups.addAll(setups);
+
+      // Startup starts with no tools preselected
+      _enabledToolNames.clear();
+
+      final savedClients = await _storage.loadInitializedClients();
+      _initializedClientIds.addAll(savedClients);
+
       await _syncMcpServers();
     } catch (e) {
       _errorMessage = 'Failed to load configuration: $e';
     } finally {
+      _isInitializing = false;
       _loading = false;
       notifyListeners();
     }
@@ -271,9 +373,13 @@ class PlaygroundController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addServer(McpServerConfig server) async {
+  Future<void> addServer(McpServerConfig server, {bool autoSelectTools = true}) async {
     _servers.add(server);
     await _storage.saveServers(_servers);
+    if (!autoSelectTools) {
+      _initializedClientIds.add(server.name);
+      await _storage.saveInitializedClients(_initializedClientIds);
+    }
     await _syncMcpServers();
     notifyListeners();
   }
@@ -306,8 +412,6 @@ class PlaygroundController extends ChangeNotifier {
   }
 
   Future<void> _syncMcpServers() async {
-    await _mcpManager.disconnectAll();
-    _mcpManager.clear();
     final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     final activeServers = _servers
         .where((s) {
@@ -319,8 +423,12 @@ class PlaygroundController extends ChangeNotifier {
         })
         .toList();
 
-    // Re-register external / local servers
+    final List<MCPClientDef> nextClients = [];
+    final List<MCPClientDef> clientsToConnect = [];
+
     for (final s in activeServers) {
+      final cachedTools = await _storage.loadCachedServerTools(s.id);
+
       final MCPClient client;
       if (s.isLocal) {
         client = LocalMCPClient(
@@ -338,13 +446,112 @@ class PlaygroundController extends ChangeNotifier {
               debugPrint('[Playground MCP Log: ${s.name}] $msg'),
         );
       }
-      _mcpManager.registerClient(
-        MCPClientDef(name: s.id, client: client, displayName: s.name),
+
+      final clientDef = MCPClientDef(name: s.id, client: client, displayName: s.name);
+      if (cachedTools.isNotEmpty) {
+        clientDef.cachedTools = cachedTools;
+      }
+      nextClients.add(clientDef);
+
+      final hasSelectedTool = cachedTools.any((t) => _enabledToolNames.contains(t.name));
+      final shouldConnect = hasSelectedTool;
+
+      if (shouldConnect) {
+        clientsToConnect.add(clientDef);
+      }
+    }
+
+    // Disconnect everything currently running
+    await _mcpManager.disconnectAll();
+    _mcpManager.clear();
+
+    // Register all active client definitions
+    for (final c in nextClients) {
+      _mcpManager.registerClient(c);
+    }
+
+    // Only trigger actual connections for selected/undiscovered servers
+    if (clientsToConnect.isNotEmpty) {
+      await Future.wait(
+        clientsToConnect.map((c) => c.client.connect().then((_) async {
+          if (c.client.availableTools.isNotEmpty) {
+            await _storage.saveCachedServerTools(c.name, c.client.availableTools);
+            c.cachedTools = c.client.availableTools;
+          }
+        }).catchError((e) => null)),
       );
     }
 
-    // Connect to external/local servers in parallel
-    await _mcpManager.initializeAll();
+    bool changed = false;
+    for (final clientDef in _mcpManager.clients) {
+      if (clientDef.isConnected && !_initializedClientIds.contains(clientDef.name)) {
+        _initializedClientIds.add(clientDef.name);
+        if (!_isInitializing) {
+          for (final tool in clientDef.availableTools) {
+            _enabledToolNames.add(tool.name);
+          }
+        }
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await _storage.saveInitializedClients(_initializedClientIds);
+      await _storage.saveEnabledTools(_enabledToolNames);
+    }
+  }
+
+  Future<void> initializeAllUndiscoveredServers() async {
+    final undiscovered = _mcpManager.clients.where((c) {
+      final s = _servers.where((srv) => srv.id == c.name).firstOrNull;
+      if (s == null || !s.enabled) return false;
+      return !c.isConnected && c.availableTools.isEmpty;
+    }).toList();
+
+    if (undiscovered.isEmpty) return;
+
+    await Future.wait(
+      undiscovered.map((c) => c.client.connect().then((_) async {
+        if (c.client.availableTools.isNotEmpty) {
+          await _storage.saveCachedServerTools(c.name, c.client.availableTools);
+          c.cachedTools = c.client.availableTools;
+        }
+      }).catchError((e) => null)),
+    );
+
+    bool changed = false;
+    for (final clientDef in undiscovered) {
+      if (clientDef.isConnected) {
+        _initializedClientIds.add(clientDef.name);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await _storage.saveInitializedClients(_initializedClientIds);
+    }
+
+    await _syncMcpServers();
+  }
+
+  Future<void> connectServer(String id) async {
+    final clients = _mcpManager.clients.where((c) => c.name == id);
+    if (clients.isEmpty) return;
+    final clientDef = clients.first;
+    if (clientDef.isConnected) return;
+
+    await clientDef.client.connect().then((_) async {
+      if (clientDef.client.availableTools.isNotEmpty) {
+        await _storage.saveCachedServerTools(clientDef.name, clientDef.client.availableTools);
+        clientDef.cachedTools = clientDef.client.availableTools;
+      }
+    }).catchError((e) => null);
+
+    notifyListeners();
+  }
+
+  Future<void> syncMcpServers() async {
+    await _syncMcpServers();
   }
 
   void clearChat() {
@@ -405,11 +612,88 @@ class PlaygroundController extends ChangeNotifier {
             attachments: isMultiModal ? imagesOnly : null,
           ),
         );
+      } else if (m.role == ChatRole.tool) {
+        final cleanedContent = _stripBase64AndBinary(m.content);
+        processed.add(
+          ChatMessage(
+            id: m.id,
+            role: m.role,
+            content: cleanedContent,
+            timestamp: m.timestamp,
+            toolName: m.toolName,
+            attachments: m.attachments,
+          ),
+        );
       } else {
         processed.add(m);
       }
     }
     return processed;
+  }
+
+  String _stripBase64AndBinary(String text) {
+    var result = text;
+
+    // 1. Check if the entire text is just a raw base64 string
+    final cleanRaw = text.trim().replaceAll(RegExp(r'\s+'), '');
+    if (cleanRaw.length > 100 && _looksLikeBase64(cleanRaw)) {
+      return '[Binary/Image Data]';
+    }
+
+    // 2. Try JSON replacement (if the text is JSON containing base64)
+    try {
+      final decoded = jsonDecode(text.trim());
+      final cleaned = _cleanJsonBase64(decoded);
+      if (cleaned == null) {
+        return '[Binary/Image Data]';
+      }
+      return const JsonEncoder.withIndent('  ').convert(cleaned);
+    } catch (_) {
+      // Not JSON
+    }
+
+    // 3. Fallback: regex search and replace base64 PNG blocks or general base64 blocks
+    final base64Regex = RegExp(r'(iVBORw0KGgo[a-zA-Z0-9+/=\s\r\n]{50,})|([A-Za-z0-9+/]{100,}[=]{0,2})');
+    result = result.replaceAll(base64Regex, '[Binary/Image Data]');
+
+    // Also strip data:image/... or data:application/... URI patterns
+    final dataUriRegex = RegExp(r'data:[^/]+/[^;]+;base64,[a-zA-Z0-9+/=\s\r\n]+');
+    result = result.replaceAll(dataUriRegex, '[Binary/Image Data]');
+
+    return result.trim();
+  }
+
+  bool _looksLikeBase64(String str) {
+    if (str.startsWith('iVBORw0KGgo') || str.startsWith('data:')) return true;
+    final clean = str.replaceAll(RegExp(r'\s+'), '');
+    if (clean.length < 50) return false;
+    final hasBase64Chars = RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(clean);
+    return hasBase64Chars;
+  }
+
+  dynamic _cleanJsonBase64(dynamic val) {
+    if (val is String) {
+      final clean = val.trim().replaceAll(RegExp(r'\s+'), '');
+      if (clean.length > 100 && _looksLikeBase64(clean)) {
+        return '[Binary/Image Data]';
+      }
+      return val;
+    } else if (val is Map) {
+      final nextMap = <String, dynamic>{};
+      for (final entry in val.entries) {
+        nextMap[entry.key.toString()] = _cleanJsonBase64(entry.value);
+      }
+      return nextMap;
+    } else if (val is List) {
+      return val.map((item) => _cleanJsonBase64(item)).toList();
+    }
+    return val;
+  }
+
+  void _log(String message) {
+    if (enableLogging) {
+      debugPrint('[McpPlayground] $message');
+    }
   }
 
   /// Sends a message and triggers the agentic tool call loop.
@@ -422,162 +706,212 @@ class PlaygroundController extends ChangeNotifier {
       return;
     }
 
-    // ── Reset tool loop tracking for this new user request ──────────
-    _toolIterationCount = 0;
-    _forceNoToolCallsNextTurn = false;
-    _forcedNoToolHintNextTurn = null;
-    _executedToolCallSignatures.clear();
-    _executedToolCallIds.clear();
-
     _errorMessage = null;
     _generating = true;
-
-    // 1. Add User Message
-    _messages.add(
-      ChatMessage(
-        id: _uuid.v4(),
-        content: text,
-        role: ChatRole.user,
-        attachments: attachments,
-        timestamp: DateTime.now(),
-      ),
-    );
     notifyListeners();
 
+    _log('User Message: $text');
+
     try {
-      int steps = 0;
-      const maxSteps = 5;
-      bool continueLoop = true;
+      final subPrompts = parseSubPromptSteps(text);
+      _log('Parsed ${subPrompts.length} sub-prompt steps.');
 
-      // 3. Execution System Prompt
-      String systemPrompt = _systemPrompt.trim().isNotEmpty
-          ? _systemPrompt
-          : 'You are an agent equipped with tools. Focus on the user\'s task. '
-                'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
-                'Present final answers directly. Present code and logs inside clean formatting.';
+      String? lastToolOutput;
+      String? lastTaskResult;
 
-      // Inject short instructions into the system prompt to guide tool execution and loop prevention
-      systemPrompt += '\n\n'
-          'Tool execution rules:\n'
-          '- Each tool execution result is returned in a JSON structure: {"tool": "name", "id": "unique_id", "tool_executed": true, "tool_result": ...}.\n'
-          '- Once a tool has been successfully executed (tool_executed is true), you must NEVER call that tool with the same "id" or parameters again.\n'
-          '- Instead, formulate your final response to the user using the result provided in tool_result.';
+      for (int i = 0; i < subPrompts.length; i++) {
+        final step = subPrompts[i];
+        String prompt = step.text;
 
-      while (continueLoop && steps < maxSteps) {
-        steps++;
+        // Substitute placeholders from previous steps
+        if (lastToolOutput != null) {
+          prompt = prompt
+              .replaceAll(r'${tool_result}', lastToolOutput)
+              .replaceAll('[tool_result]', lastToolOutput);
+          lastToolOutput = null;
+        }
+        if (lastTaskResult != null) {
+          prompt = prompt
+              .replaceAll(r'${task_result}', lastTaskResult)
+              .replaceAll('[task_result]', lastTaskResult);
+          lastTaskResult = null;
+        }
 
-        // ── Check iteration limit to prevent infinite loops ─────────
-        if (_toolIterationCount > _maxToolIterations) {
-          _messages.add(
-            ChatMessage(
+        // Determine if next step needs tool result
+        final nextNeedsToolResult = (i + 1 < subPrompts.length) &&
+            (subPrompts[i + 1].text.contains(r'${tool_result}') ||
+                subPrompts[i + 1].text.contains('[tool_result]'));
+
+        // Reset tool loop tracking for this step
+        _toolIterationCount = 0;
+        _forceNoToolCallsNextTurn = false;
+        _forcedNoToolHintNextTurn = null;
+        _executedToolCallSignatures.clear();
+        _executedToolCallIds.clear();
+
+        // 1. Add User Message (first step uses attachments if any, subsequent steps don't)
+        final userMsg = ChatMessage(
+          id: _uuid.v4(),
+          content: prompt,
+          role: ChatRole.user,
+          attachments: (i == 0) ? attachments : null,
+          timestamp: DateTime.now(),
+        );
+        _messages.add(userMsg);
+        notifyListeners();
+
+        final stepNewMsgs = <ChatMessage>[];
+
+        // 3. Execution System Prompt
+        String systemPrompt = _systemPrompt.trim().isNotEmpty
+            ? _systemPrompt
+            : 'You are an agent equipped with tools. Focus on the user\'s task. '
+                  'Use the tool schemas precisely. If you decide to call a tool, generate the tool call block. '
+                  'Present final answers directly. Present code and logs inside clean formatting.';
+
+        // Inject short instructions into the system prompt to guide tool execution and loop prevention
+        systemPrompt += '\n\n'
+            'Tool execution rules:\n'
+            '- Each tool execution result is returned in a JSON structure: {"tool": "name", "id": "unique_id", "tool_executed": true, "tool_result": ...}.\n'
+            '- Once a tool has been successfully executed (tool_executed is true), you must NEVER call that tool with the same "id" or parameters again.\n'
+            '- Instead, formulate your final response to the user using the result provided in tool_result.';
+
+        // Filter step tools
+        final stepEnabled = step.enabledToolNames;
+        final bool stepHasTools = stepEnabled != null
+            ? stepEnabled.isNotEmpty
+            : (_localTools.isNotEmpty || _mcpManager.availableTools.isNotEmpty);
+
+        // Inject active tool descriptions into system prompt
+        final List<MCPTool> allAvailableTools = [];
+        allAvailableTools.addAll(_localTools.map((t) => t.toMCPTool()));
+        allAvailableTools.addAll(_mcpManager.availableTools);
+
+        final List<MCPTool> activeStepTools = allAvailableTools.where((t) {
+          if (stepEnabled != null) {
+            return stepEnabled.contains(t.name);
+          }
+          return _enabledToolNames.contains(t.name);
+        }).toList();
+
+        if (stepHasTools && activeStepTools.isNotEmpty) {
+          systemPrompt += '\n\nAvailable Tools:\n';
+          for (final tool in activeStepTools) {
+            systemPrompt += '- Tool Name: ${tool.name}\n';
+            if (tool.description != null && tool.description!.isNotEmpty) {
+              systemPrompt += '  Description: ${tool.description}\n';
+            }
+            if (tool.inputSchema != null) {
+              systemPrompt += '  Input Schema: ${jsonEncode(tool.inputSchema)}\n';
+            }
+          }
+        }
+
+        _log('System Prompt for step ${i + 1}:\n$systemPrompt');
+
+        int stepsCount = 0;
+        const maxSteps = 5;
+        bool continueLoop = true;
+
+        while (continueLoop && stepsCount < maxSteps) {
+          stepsCount++;
+
+          if (_toolIterationCount > _maxToolIterations) {
+            final limitMsg = ChatMessage(
               id: _uuid.v4(),
               content:
                   'Maximum tool iteration limit ($_maxToolIterations) reached. '
                   'Please refine your request or ask for help.',
               role: ChatRole.assistant,
               timestamp: DateTime.now(),
-            ),
-          );
-          notifyListeners();
-          break;
-        }
+            );
+            _messages.add(limitMsg);
+            stepNewMsgs.add(limitMsg);
+            notifyListeners();
+            break;
+          }
 
-        // 2. Build tools list (may be suppressed on forced-final turn)
-        final List<MCPTool> mcpTools = [];
-        if (!_chatMode && !_forceNoToolCallsNextTurn) {
-          mcpTools.addAll(
-            _localTools
-                .map((t) => t.toMCPTool())
-                .where((t) => _enabledToolNames.contains(t.name)),
-          );
-          mcpTools.addAll(
-            _mcpManager.availableTools.where(
-              (t) => _enabledToolNames.contains(t.name),
-            ),
-          );
-        }
+          // Build tools list (may be suppressed on forced-final turn)
+          final List<MCPTool> mcpTools = [];
+          if (!_chatMode && !_forceNoToolCallsNextTurn) {
+            mcpTools.addAll(activeStepTools);
+          }
 
-        // If forced final turn, inject the hint as a user message
-        // so the model switches to text-only synthesis.
-        final List<ChatMessage> requestMsgs = await _preprocessMessagesForLlm(
-          _messages,
-          activeLlmConfig.isMultiModal,
-        );
-        if (_forceNoToolCallsNextTurn && _forcedNoToolHintNextTurn != null) {
-          requestMsgs.add(
-            ChatMessage(
-              id: _uuid.v4(),
-              content: _forcedNoToolHintNextTurn!,
-              role: ChatRole.user,
-              timestamp: DateTime.now(),
-            ),
+          final List<ChatMessage> requestMsgs = await _preprocessMessagesForLlm(
+            _messages,
+            activeLlmConfig.isMultiModal,
           );
-          _forceNoToolCallsNextTurn = false;
-          _forcedNoToolHintNextTurn = null;
-        }
-
-        final response = await LLMService.generate(
-          config: activeLlmConfig,
-          messages: requestMsgs,
-          tools: mcpTools,
-          systemPrompt: systemPrompt,
-        );
-
-        if (response.toolCalls.isEmpty) {
-          // No more tool calls: append assistant text and end loop
-          if (response.text.isNotEmpty) {
-            _messages.add(
+          if (_forceNoToolCallsNextTurn && _forcedNoToolHintNextTurn != null) {
+            requestMsgs.add(
               ChatMessage(
+                id: _uuid.v4(),
+                content: _forcedNoToolHintNextTurn!,
+                role: ChatRole.user,
+                timestamp: DateTime.now(),
+              ),
+            );
+            _forceNoToolCallsNextTurn = false;
+            _forcedNoToolHintNextTurn = null;
+          }
+
+          _log('Generating LLM response...');
+          final response = await LLMService.generate(
+            config: activeLlmConfig,
+            messages: requestMsgs,
+            tools: mcpTools,
+            systemPrompt: systemPrompt,
+          );
+
+          if (response.toolCalls.isEmpty) {
+            if (response.text.isNotEmpty) {
+              final textMsg = ChatMessage(
                 id: _uuid.v4(),
                 content: response.text,
                 role: ChatRole.assistant,
                 timestamp: DateTime.now(),
-              ),
-            );
-          }
-          continueLoop = false;
-        } else {
-          // LLM requested tool execution
-          final call = response.toolCalls.first;
-
-          // ── Duplicate tool call detection ─────────────────────────
-          _toolIterationCount++;
-          final toolSignature = '${call.name}|${jsonEncode(call.arguments)}';
-          final hasDuplicateId = _executedToolCallIds.contains(call.id);
-          final hasDuplicateSignature = _executedToolCallSignatures.contains(
-            toolSignature,
-          );
-
-          if (hasDuplicateId || hasDuplicateSignature) {
-            // Intercept repeated tool call — force the model to finalise.
-            String previousResult = _messages
-                .lastWhere(
-                  (m) => m.role == ChatRole.tool && m.toolName == call.name,
-                  orElse: () => ChatMessage(
-                    id: '',
-                    content: '',
-                    role: ChatRole.tool,
-                    timestamp: DateTime.now(),
-                  ),
-                )
-                .content;
-
-            if (previousResult.trim().startsWith('{')) {
-              try {
-                final decoded = jsonDecode(previousResult);
-                if (decoded is Map && decoded.containsKey('tool_result')) {
-                  previousResult = decoded['tool_result'].toString();
-                }
-              } catch (_) {}
+              );
+              _messages.add(textMsg);
+              stepNewMsgs.add(textMsg);
+              _log('Assistant Response: ${response.text}');
             }
+            continueLoop = false;
+          } else {
+            final call = response.toolCalls.first;
+            _log('Assistant Tool Call: ${call.name} with arguments: ${jsonEncode(call.arguments)}');
 
-            final loopCorrectionText =
-                'The tool "${call.name}" was already successfully executed. '
-                'Previous result: $previousResult\n\n'
-                'Do NOT call this tool again. Generate the final response using this result.';
+            _toolIterationCount++;
+            final toolSignature = '${call.name}|${jsonEncode(call.arguments)}';
+            final hasDuplicateId = _executedToolCallIds.contains(call.id);
+            final hasDuplicateSignature = _executedToolCallSignatures.contains(toolSignature);
 
-            _messages.add(
-              ChatMessage(
+            if (hasDuplicateId || hasDuplicateSignature) {
+              String previousResult = _messages
+                  .lastWhere(
+                    (m) => m.role == ChatRole.tool && m.toolName == call.name,
+                    orElse: () => ChatMessage(
+                      id: '',
+                      content: '',
+                      role: ChatRole.tool,
+                      timestamp: DateTime.now(),
+                    ),
+                  )
+                  .content;
+
+              if (previousResult.trim().startsWith('{')) {
+                try {
+                  final decoded = jsonDecode(previousResult);
+                  if (decoded is Map && decoded.containsKey('tool_result')) {
+                    previousResult = decoded['tool_result'].toString();
+                  }
+                } catch (_) {}
+              }
+
+              final loopCorrectionText =
+                  'The tool "${call.name}" was already successfully executed. '
+                  'Previous result: $previousResult\n\n'
+                  'Do NOT call this tool again. Generate the final response using this result.';
+
+              final dupMsg = ChatMessage(
                 id: call.id,
                 content: activeLlmConfig.provider == LlmProvider.ollama
                     ? jsonEncode({
@@ -595,91 +929,134 @@ class PlaygroundController extends ChangeNotifier {
                   isError: false,
                 ),
                 timestamp: DateTime.now(),
-              ),
-            );
-            notifyListeners();
+              );
+              _messages.add(dupMsg);
+              stepNewMsgs.add(dupMsg);
+              notifyListeners();
 
-            // Force the next LLM turn to have no tools — the model must
-            // produce a text-only final answer.
-            _forceNoToolCallsNextTurn = true;
-            _forcedNoToolHintNextTurn =
-                'The tool "${call.name}" has already been successfully executed with these parameters. '
-                'Do NOT call this tool or any other tool again. Use the tool results in the history to write your final response now.';
+              _forceNoToolCallsNextTurn = true;
+              _forcedNoToolHintNextTurn =
+                  'The tool "${call.name}" has already been successfully executed with these parameters. '
+                  'Do NOT call this tool or any other tool again. Use the tool results in the history to write your final response now.';
 
-            continueLoop = true;
-            continue; // Go to next loop iteration; the forced turn will run without tools
-          }
+              continueLoop = true;
+              continue;
+            }
 
-          // Record this tool call to prevent future duplicates
-          _executedToolCallIds.add(call.id);
-          _executedToolCallSignatures.add(toolSignature);
+            _executedToolCallIds.add(call.id);
+            _executedToolCallSignatures.add(toolSignature);
 
-          // Append tool call to log UI
-          _messages.add(
-            ChatMessage(
+            final callMsg = ChatMessage(
               id: call.id,
-              content:
-                  'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
+              content: 'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
               role: ChatRole.assistant,
               type: MessageType.toolCall,
               toolName: call.name,
               toolArguments: call.arguments,
               timestamp: DateTime.now(),
-            ),
-          );
-          notifyListeners();
+            );
+            _messages.add(callMsg);
+            stepNewMsgs.add(callMsg);
+            notifyListeners();
 
-          // Execute tool
-          MCPToolResult result;
-          final localMatch = _localTools
-              .where((t) => t.name == call.name)
-              .toList();
+            _log('Executing Tool: ${call.name}');
+            MCPToolResult result;
+            final localMatch = _localTools.where((t) => t.name == call.name).toList();
 
-          if (localMatch.isNotEmpty) {
-            // Run Dart-native tool
-            result = await localMatch.first.execute(call.arguments);
-          } else {
-            // Route to external HTTP MCP server
-            result = await _mcpManager.callTool(call.name, call.arguments);
-          }
-          // Append tool response message
-          final String responseContentText = result.content
-              .where((c) => c.type == 'text')
-              .map((c) => c.text ?? '')
-              .join('\n');
+            if (localMatch.isNotEmpty) {
+              result = await localMatch.first.execute(call.arguments);
+            } else {
+              result = await _mcpManager.callTool(call.name, call.arguments);
+            }
 
-          final String finalContent;
-          if (activeLlmConfig.provider == LlmProvider.ollama) {
-            finalContent = jsonEncode({
-              'tool': call.name,
-              'id': call.id,
-              'tool_executed': true,
-              'tool_result': responseContentText.isNotEmpty ? responseContentText : 'Executed.',
-            });
-          } else {
-            finalContent = responseContentText.isNotEmpty ? responseContentText : 'Executed.';
-          }
+            final String responseContentText = result.content
+                .where((c) => c.type == 'text')
+                .map((c) => c.text ?? '')
+                .join('\n');
 
-          _messages.add(
-            ChatMessage(
-              id: call.id, // Align with tool call ID for LLM history reference
+            _log('Tool Result: $responseContentText');
+
+            final String finalContent;
+            if (activeLlmConfig.provider == LlmProvider.ollama) {
+              finalContent = jsonEncode({
+                'tool': call.name,
+                'id': call.id,
+                'tool_executed': true,
+                'tool_result': responseContentText.isNotEmpty ? responseContentText : 'Executed.',
+              });
+            } else {
+              finalContent = responseContentText.isNotEmpty ? responseContentText : 'Executed.';
+            }
+
+            final resMsg = ChatMessage(
+              id: call.id,
               content: finalContent,
               role: ChatRole.tool,
               type: MessageType.toolResponse,
               toolName: call.name,
               toolResult: result,
               timestamp: DateTime.now(),
-            ),
-          );
-          notifyListeners();
+            );
+            _messages.add(resMsg);
+            stepNewMsgs.add(resMsg);
+            notifyListeners();
 
-          if (_stopAfterToolCall) {
-            continueLoop = false;
+            final bool shouldStop = step.stopAfterToolCall || _stopAfterToolCall || nextNeedsToolResult;
+            if (shouldStop) {
+              continueLoop = false;
+            }
+          }
+        }
+
+        // Post-step processing: capture step output
+        final toolTexts = stepNewMsgs
+            .where((m) => m.role == ChatRole.tool && m.content.isNotEmpty)
+            .map((m) {
+              if (m.content.trim().startsWith('{')) {
+                try {
+                  final decoded = jsonDecode(m.content);
+                  if (decoded is Map && decoded.containsKey('tool_result')) {
+                    return decoded['tool_result'].toString();
+                  }
+                } catch (_) {}
+              }
+              return m.content;
+            })
+            .join('\n\n');
+        
+        final assistantTexts = stepNewMsgs
+            .where((m) => m.role == ChatRole.assistant && m.content.isNotEmpty && m.type != MessageType.toolCall)
+            .map((m) => m.content)
+            .join('\n\n');
+
+        final stepOutput = toolTexts.isNotEmpty
+            ? toolTexts
+            : (assistantTexts.isNotEmpty ? assistantTexts : null);
+
+        if (stepOutput != null) {
+          lastTaskResult = stepOutput;
+          if (nextNeedsToolResult) {
+            lastToolOutput = stepOutput;
+            _log('Captured step output for \${tool_result}/\${task_result} (${stepOutput.length} chars)');
+          } else {
+            _log('Captured step output for \${task_result} (${stepOutput.length} chars)');
+          }
+        }
+
+        final bool globalStopActive = _stopAfterToolCall && !nextNeedsToolResult;
+        if (globalStopActive) {
+          final nextWantsResult = (i + 1 < subPrompts.length) &&
+              (subPrompts[i + 1].text.contains(r'${task_result}') ||
+                  subPrompts[i + 1].text.contains('[task_result]'));
+          if (!nextWantsResult && stepNewMsgs.any((m) => m.role == ChatRole.tool)) {
+            _log('[stopAfterToolCall] Breaking sub-prompt chain after step ${i + 1} — no result consumer in next step');
+            break;
           }
         }
       }
     } catch (e) {
       _errorMessage = 'Execution error: $e';
+      _log('Execution error: $e');
       _messages.add(
         ChatMessage(
           id: _uuid.v4(),
