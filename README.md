@@ -20,6 +20,16 @@ An interactive AI Agent Playground widget for Flutter — connect to any LLM pro
 
 ---
 
+## 🎥 Demo
+
+Watch the AI Agent Playground in action executing SSH commands and generating charts:
+
+<video src="screenshots/video/mcp_playground_ssh_chart_test.mp4" width="100%" controls></video>
+
+*(If the video doesn't play, you can watch/download it directly [here](screenshots/video/mcp_playground_ssh_chart_test.mp4))*
+
+---
+
 ## 🚀 Installation
 
 Add to your `pubspec.yaml`:
