@@ -1,8 +1,6 @@
 ## 0.0.8
 
 * Added lenient HTML document parsing and a collapsed "HTML Document Preview" magnifier view modal to robot messages.
-* Renamed Settings middle tab to "Remote MCP Servers".
-* Filtered out unconnectable remote SSE servers from registry catalog listing, removing the `sse` tag chip.
 * Fixed on-demand tool discovery in the tools catalog dialog by triggering local process connections on dialog load and gracefully shutting down inactive servers upon close.
 * Implemented comprehensive translations and localizations support for HTML previews, dialog messages, and tab names in English and German.
 * Upgraded Kotlin compiler version in the example app to `2.2.20` to support modern Gradle compilation.

@@ -208,18 +208,18 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
         List<dynamic> requiredEnvVars = [];
 
         final remotes = s['remotes'] as List<dynamic>?;
-        bool isSse = false;
         if (remotes != null && remotes.isNotEmpty) {
           final firstRemote = remotes[0];
           if (firstRemote is Map) {
             final remoteType = firstRemote['type'] as String? ?? '';
+            final remoteUrl = firstRemote['url'] as String? ?? '';
             if (remoteType == 'streamable-http' || remoteType == 'sse') {
-              isSse = true;
+              installType = 'sse';
+              language = 'remote';
+              entryPoint = remoteUrl;
+              githubUrl = remoteUrl;
             }
           }
-        }
-        if (isSse) {
-          continue; // Skip remote SSE servers entirely
         }
 
         parsedList.add({
@@ -616,7 +616,7 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
   Widget _buildRegistryTab(ThemeData theme) {
     // Categories and Methods lists
     final categories = ['all', 'files', 'databases', 'web', 'productivity', 'other'];
-    final methods = ['all', 'uvx', 'pip', 'npm'];
+    final methods = ['all', 'uvx', 'pip', 'npm', 'sse'];
 
     // Filter registry list
     final filtered = _githubRegistry.where((s) {

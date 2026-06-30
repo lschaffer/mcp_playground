@@ -377,9 +377,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     icon: Icon(Icons.psychology_outlined),
                     text: 'LLM Settings',
                   ),
-                  Tab(
-                    icon: const Icon(Icons.hub_outlined),
-                    text: l10n.get('remoteMcpServers'),
+                  const Tab(
+                    icon: Icon(Icons.hub_outlined),
+                    text: 'MCP Servers',
                   ),
                   if (isDesktop)
                     const Tab(
