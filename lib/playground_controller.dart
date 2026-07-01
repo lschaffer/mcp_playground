@@ -10,6 +10,7 @@ import 'mcp_client.dart';
 import 'llm_service.dart';
 import 'local_tools.dart';
 import 'src/local_mcp_client.dart';
+import 'src/utils/mime_utils.dart';
 
 /// Abstract delegate for storing and loading LLM configuration, server registry, and saved setups.
 abstract class McpPlaygroundStorageDelegate {
@@ -48,6 +49,18 @@ abstract class McpPlaygroundStorageDelegate {
 
   /// Loads cached tools list for a server ID.
   Future<List<MCPTool>> loadCachedServerTools(String serverId) async => [];
+
+  /// Saves the remote MCP server catalog response.
+  Future<void> saveServerCatalog(String catalogJson) async {}
+
+  /// Loads the saved server catalog response.
+  Future<String?> loadServerCatalog() async => null;
+
+  /// Saves the remote MCP server catalog timestamp.
+  Future<void> saveServerCatalogTimestamp(int timestamp) async {}
+
+  /// Loads the saved server catalog timestamp.
+  Future<int?> loadServerCatalogTimestamp() async => null;
 }
 
 /// A default implementation of [McpPlaygroundStorageDelegate] using SharedPreferences.
@@ -57,16 +70,22 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   static const _kSetups = 'mcp_playground_saved_setups';
   static const _kEnabledTools = 'mcp_playground_enabled_tools';
   static const _kInitializedClients = 'mcp_playground_initialized_clients';
+  static const _kCachedServerTools = 'mcp_playground_cached_server_tools';
+
+  SharedPreferences? _cachedPrefs;
+
+  Future<SharedPreferences> get _instance async =>
+      _cachedPrefs ??= await SharedPreferences.getInstance();
 
   @override
   Future<void> saveLlmConfig(LlmConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setString(_kLlm, jsonEncode(config.toJson()));
   }
 
   @override
   Future<LlmConfig?> loadLlmConfig() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final raw = prefs.getString(_kLlm);
     if (raw == null || raw.isEmpty) return null;
     try {
@@ -78,14 +97,14 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
 
   @override
   Future<void> saveServers(List<McpServerConfig> servers) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = servers.map((s) => s.toJson()).toList();
     await prefs.setString(_kServers, jsonEncode(list));
   }
 
   @override
   Future<List<McpServerConfig>> loadServers() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final raw = prefs.getString(_kServers);
     if (raw == null || raw.isEmpty) return [];
     try {
@@ -100,14 +119,14 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
 
   @override
   Future<void> saveSetups(List<SavedPlaygroundSetup> setups) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = setups.map((s) => s.toJson()).toList();
     await prefs.setString(_kSetups, jsonEncode(list));
   }
 
   @override
   Future<List<SavedPlaygroundSetup>> loadSetups() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final raw = prefs.getString(_kSetups);
     if (raw == null || raw.isEmpty) return [];
     try {
@@ -125,42 +144,40 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
 
   @override
   Future<void> saveEnabledTools(Set<String> tools) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setStringList(_kEnabledTools, tools.toList());
   }
 
   @override
   Future<Set<String>> loadEnabledTools() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = prefs.getStringList(_kEnabledTools);
     return list?.toSet() ?? {};
   }
 
   @override
   Future<void> saveInitializedClients(Set<String> clients) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setStringList(_kInitializedClients, clients.toList());
   }
 
   @override
   Future<Set<String>> loadInitializedClients() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = prefs.getStringList(_kInitializedClients);
     return list?.toSet() ?? {};
   }
 
-  static const _kCachedServerTools = 'mcp_playground_cached_server_tools';
-
   @override
   Future<void> saveCachedServerTools(String serverId, List<MCPTool> tools) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = tools.map((t) => t.toJson()).toList();
     await prefs.setString('${_kCachedServerTools}_$serverId', jsonEncode(list));
   }
 
   @override
   Future<List<MCPTool>> loadCachedServerTools(String serverId) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final raw = prefs.getString('${_kCachedServerTools}_$serverId');
     if (raw == null || raw.isEmpty) return [];
     try {
@@ -169,6 +186,30 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
     } catch (_) {
       return [];
     }
+  }
+
+  @override
+  Future<void> saveServerCatalog(String catalogJson) async {
+    final prefs = await _instance;
+    await prefs.setString('mcp_playground_server_catalog', catalogJson);
+  }
+
+  @override
+  Future<String?> loadServerCatalog() async {
+    final prefs = await _instance;
+    return prefs.getString('mcp_playground_server_catalog');
+  }
+
+  @override
+  Future<void> saveServerCatalogTimestamp(int timestamp) async {
+    final prefs = await _instance;
+    await prefs.setInt('mcp_playground_server_catalog_ts', timestamp);
+  }
+
+  @override
+  Future<int?> loadServerCatalogTimestamp() async {
+    final prefs = await _instance;
+    return prefs.getInt('mcp_playground_server_catalog_ts');
   }
 }
 
@@ -252,6 +293,7 @@ class PlaygroundController extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isGenerating => _generating;
   String? get errorMessage => _errorMessage;
+  McpPlaygroundStorageDelegate get storage => _storage;
 
   bool get stopAfterToolCall => _stopAfterToolCall;
   set stopAfterToolCall(bool val) {
@@ -473,12 +515,7 @@ class PlaygroundController extends ChangeNotifier {
     // Only trigger actual connections for selected/undiscovered servers
     if (clientsToConnect.isNotEmpty) {
       await Future.wait(
-        clientsToConnect.map((c) => c.client.connect().then((_) async {
-          if (c.client.availableTools.isNotEmpty) {
-            await _storage.saveCachedServerTools(c.name, c.client.availableTools);
-            c.cachedTools = c.client.availableTools;
-          }
-        }).catchError((e) => null)),
+        clientsToConnect.map((c) => _connectClientAndCacheTools(c)),
       );
     }
 
@@ -501,6 +538,16 @@ class PlaygroundController extends ChangeNotifier {
     }
   }
 
+  Future<void> _connectClientAndCacheTools(MCPClientDef c) async {
+    try {
+      await c.client.connect();
+      if (c.client.availableTools.isNotEmpty) {
+        await _storage.saveCachedServerTools(c.name, c.client.availableTools);
+        c.cachedTools = c.client.availableTools;
+      }
+    } catch (_) {}
+  }
+
   Future<void> initializeAllUndiscoveredServers() async {
     final undiscovered = _mcpManager.clients.where((c) {
       final s = _servers.where((srv) => srv.id == c.name).firstOrNull;
@@ -511,12 +558,7 @@ class PlaygroundController extends ChangeNotifier {
     if (undiscovered.isEmpty) return;
 
     await Future.wait(
-      undiscovered.map((c) => c.client.connect().then((_) async {
-        if (c.client.availableTools.isNotEmpty) {
-          await _storage.saveCachedServerTools(c.name, c.client.availableTools);
-          c.cachedTools = c.client.availableTools;
-        }
-      }).catchError((e) => null)),
+      undiscovered.map((c) => _connectClientAndCacheTools(c)),
     );
 
     bool changed = false;
@@ -540,12 +582,7 @@ class PlaygroundController extends ChangeNotifier {
     final clientDef = clients.first;
     if (clientDef.isConnected) return;
 
-    await clientDef.client.connect().then((_) async {
-      if (clientDef.client.availableTools.isNotEmpty) {
-        await _storage.saveCachedServerTools(clientDef.name, clientDef.client.availableTools);
-        clientDef.cachedTools = clientDef.client.availableTools;
-      }
-    }).catchError((e) => null);
+    await _connectClientAndCacheTools(clientDef);
 
     notifyListeners();
   }
@@ -574,22 +611,7 @@ class PlaygroundController extends ChangeNotifier {
         for (final att in m.attachments!) {
           final mime = att.mimeType.toLowerCase();
           final name = att.name.toLowerCase();
-          final isText =
-              mime.startsWith('text/') ||
-              name.endsWith('.txt') ||
-              name.endsWith('.md') ||
-              name.endsWith('.csv') ||
-              name.endsWith('.json') ||
-              name.endsWith('.yaml') ||
-              name.endsWith('.yml') ||
-              name.endsWith('.xml') ||
-              name.endsWith('.html') ||
-              name.endsWith('.js') ||
-              name.endsWith('.py') ||
-              name.endsWith('.dart') ||
-              name.endsWith('.sh') ||
-              name.endsWith('.bat') ||
-              name.endsWith('.ps1');
+          final isText = isTextFile(mime, name);
 
           if (isText && att.bytes != null) {
             try {
@@ -794,7 +816,7 @@ class PlaygroundController extends ChangeNotifier {
           return _enabledToolNames.contains(t.name);
         }).toList();
 
-        if (stepHasTools && activeStepTools.isNotEmpty) {
+        if (stepHasTools && activeStepTools.isNotEmpty && !activeLlmConfig.useNativeToolCall) {
           systemPrompt += '\n\nAvailable Tools:\n';
           for (final tool in activeStepTools) {
             systemPrompt += '- Tool Name: ${tool.name}\n';
@@ -809,14 +831,10 @@ class PlaygroundController extends ChangeNotifier {
 
         _log('System Prompt for step ${i + 1}:\n$systemPrompt');
 
-        int stepsCount = 0;
-        const maxSteps = 5;
         bool continueLoop = true;
 
-        while (continueLoop && stepsCount < maxSteps) {
-          stepsCount++;
-
-          if (_toolIterationCount > _maxToolIterations) {
+        while (continueLoop) {
+          if (_toolIterationCount >= _maxToolIterations) {
             final limitMsg = ChatMessage(
               id: _uuid.v4(),
               content:

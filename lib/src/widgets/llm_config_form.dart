@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models.dart';
 import '../../llm_service.dart';
+import 'embedded_llm/embedded_model_picker_widget.dart';
 
 /// Reusable widget for base LLM configuration: Provider, Model (with autocomplete),
 /// API Key, Base URL, Fetch/Refresh Models button, and Test Connection button.
@@ -226,7 +228,10 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
             border: OutlineInputBorder(),
             isDense: true,
           ),
-          items: LlmProvider.values.map((provider) {
+          items: LlmProvider.values.where((p) {
+            if (kIsWeb && p == LlmProvider.embedded) return false;
+            return true;
+          }).map((provider) {
             return DropdownMenuItem(
               value: provider,
               child: Text(provider.displayName),
@@ -250,7 +255,7 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
             }
           },
         ),
-        if (widget.provider != LlmProvider.none) ...[
+        if (widget.provider != LlmProvider.none && widget.provider != LlmProvider.embedded) ...[
           // Autocomplete for Model name
           Autocomplete<String>(
             initialValue: widget.modelCtrl.value,
@@ -352,6 +357,14 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
                 ),
               ),
             ],
+          ),
+        ],
+        if (widget.provider == LlmProvider.embedded) ...[
+          EmbeddedModelPickerWidget(
+            selectedFilename: widget.modelCtrl.text,
+            onFilenameSelected: (val) {
+              widget.modelCtrl.text = val;
+            },
           ),
         ],
       ],

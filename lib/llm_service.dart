@@ -6,7 +6,11 @@ import 'package:openai_dart/openai_dart.dart' as openai;
 import 'package:anthropic_sdk_dart/anthropic_sdk_dart.dart' as anthropic;
 import 'package:ollama_dart/ollama_dart.dart' as ollama;
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 import 'models.dart';
+import 'src/services/embedded_llm/embedded_llm_adapter.dart';
+
+const _uuid = Uuid();
 
 /// Represents a tool call requested by the LLM.
 class LLMToolCall {
@@ -44,6 +48,32 @@ class LLMResponse {
 
 /// Service provider class wrapping client integrations for various LLM SDKs.
 class LLMService {
+  static final Map<String, dynamic> _clientCache = {};
+
+  static T _getOrCreateClient<T>({
+    required String key,
+    required T Function() create,
+  }) {
+    if (_clientCache.containsKey(key)) {
+      return _clientCache[key] as T;
+    }
+    final client = create();
+    _clientCache[key] = client;
+    return client;
+  }
+
+  /// Clears cached LLM clients and closes any GoogleAIClient instances.
+  static void clearCache() {
+    for (final client in _clientCache.values) {
+      if (client is gemini.GoogleAIClient) {
+        try {
+          client.close();
+        } catch (_) {}
+      }
+    }
+    _clientCache.clear();
+  }
+
   /// Generate completion using direct SDK adapters.
   static Future<LLMResponse> generate({
     required LlmConfig config,
@@ -63,9 +93,35 @@ class LLMService {
         return await _generateGemini(config, messages, tools, systemPrompt);
       case LlmProvider.ollama:
         return await _generateOllama(config, messages, tools, systemPrompt);
+      case LlmProvider.embedded:
+        return await _generateEmbedded(config, messages, tools, systemPrompt);
       default:
         throw Exception('LLM provider not configured or unsupported');
     }
+  }
+
+  static Future<LLMResponse> _generateEmbedded(
+    LlmConfig config,
+    List<ChatMessage> messages,
+    List<MCPTool> tools,
+    String? systemPrompt,
+  ) async {
+    final adapter = EmbeddedLlmAdapter.instance;
+    if (!adapter.isLoaded) {
+      throw StateError(
+        'Embedded model is not loaded. '
+        'Please select a model and click "Load into app" under LLM Settings → Embedded.',
+      );
+    }
+    return await adapter.generateResponse(
+      messages: messages,
+      availableTools: tools,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens > 0 ? config.maxTokens : 1024,
+      topK: config.topK ?? 40,
+      topP: config.topP ?? 0.9,
+      penalty: config.repeatPenalty ?? 1.15,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -78,114 +134,110 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    try {
-      final List<openai.ChatMessage> openAiMsgs = [];
+    final List<openai.ChatMessage> openAiMsgs = [];
 
-      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-        openAiMsgs.add(
-          openai.ChatMessage.system(
-            systemPrompt,
-          ),
-        );
-      }
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      openAiMsgs.add(
+        openai.ChatMessage.system(
+          systemPrompt,
+        ),
+      );
+    }
 
-      for (final msg in messages) {
-        switch (msg.role) {
-          case ChatRole.user:
+    for (final msg in messages) {
+      switch (msg.role) {
+        case ChatRole.user:
+          openAiMsgs.add(
+            openai.ChatMessage.user(
+              msg.content,
+            ),
+          );
+        case ChatRole.assistant:
+          if (msg.type == MessageType.toolCall) {
             openAiMsgs.add(
-              openai.ChatMessage.user(
-                msg.content,
+              openai.ChatMessage.assistant(
+                toolCalls: [
+                  openai.ToolCall.functionCall(
+                    id: msg.id,
+                    call: openai.FunctionCall.fromMap(
+                      name: msg.toolName ?? '',
+                      arguments: msg.toolArguments ?? {},
+                    ),
+                  ),
+                ],
               ),
             );
-          case ChatRole.assistant:
-            if (msg.type == MessageType.toolCall) {
-              openAiMsgs.add(
-                openai.ChatMessage.assistant(
-                  toolCalls: [
-                    openai.ToolCall.functionCall(
-                      id: msg.id,
-                      call: openai.FunctionCall.fromMap(
-                        name: msg.toolName ?? '',
-                        arguments: msg.toolArguments ?? {},
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            } else {
-              openAiMsgs.add(
-                openai.ChatMessage.assistant(
-                  content: msg.content,
-                ),
-              );
-            }
-          case ChatRole.tool:
+          } else {
             openAiMsgs.add(
-              openai.ChatMessage.tool(
-                toolCallId: msg.id,
+              openai.ChatMessage.assistant(
                 content: msg.content,
               ),
             );
-          case ChatRole.system:
-            openAiMsgs.add(
-              openai.ChatMessage.system(
-                msg.content,
-              ),
-            );
-        }
+          }
+        case ChatRole.tool:
+          openAiMsgs.add(
+            openai.ChatMessage.tool(
+              toolCallId: msg.id,
+              content: msg.content,
+            ),
+          );
+        case ChatRole.system:
+          openAiMsgs.add(
+            openai.ChatMessage.system(
+              msg.content,
+            ),
+          );
       }
+    }
 
-      final List<openai.Tool> openAiTools = [];
-      if (tools.isNotEmpty && config.useNativeToolCall) {
-        for (final t in tools) {
-          openAiTools.add(
-            openai.Tool.function(
-              name: t.name,
-              description: t.description ?? '',
-              parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
+    final List<openai.Tool> openAiTools = [];
+    if (tools.isNotEmpty && config.useNativeToolCall) {
+      for (final t in tools) {
+        openAiTools.add(
+          openai.Tool.function(
+            name: t.name,
+            description: t.description ?? '',
+            parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
+          ),
+        );
+      }
+    }
+
+    final response = await client.chat.completions.create(
+      openai.ChatCompletionCreateRequest(
+        model: config.model.trim().isNotEmpty ? config.model : 'gpt-4o-mini',
+        messages: openAiMsgs,
+        tools: openAiTools.isNotEmpty ? openAiTools : null,
+        temperature: config.temperature,
+        maxTokens: config.maxTokens > 0 ? config.maxTokens : null,
+        topP: config.topP,
+        seed: config.seed,
+      ),
+    );
+
+    final choice = response.choices.first;
+    final answer = choice.message.content ?? '';
+    final toolCalls = <LLMToolCall>[];
+
+    if (choice.message.toolCalls != null) {
+      for (final tc in choice.message.toolCalls!) {
+        if (tc.type == 'function') {
+          Map<String, dynamic> args = {};
+          try {
+            args = jsonDecode(tc.function.arguments) as Map<String, dynamic>;
+          } catch (_) {}
+          toolCalls.add(
+            LLMToolCall(
+              id: tc.id,
+              name: tc.function.name,
+              arguments: args,
             ),
           );
         }
       }
-
-      final response = await client.chat.completions.create(
-        openai.ChatCompletionCreateRequest(
-          model: config.model.trim().isNotEmpty ? config.model : 'gpt-4o-mini',
-          messages: openAiMsgs,
-          tools: openAiTools.isNotEmpty ? openAiTools : null,
-          temperature: config.temperature,
-          maxTokens: config.maxTokens > 0 ? config.maxTokens : null,
-          topP: config.topP,
-          seed: config.seed,
-        ),
-      );
-
-      final choice = response.choices.first;
-      final answer = choice.message.content ?? '';
-      final toolCalls = <LLMToolCall>[];
-
-      if (choice.message.toolCalls != null) {
-        for (final tc in choice.message.toolCalls!) {
-          if (tc.type == 'function') {
-            Map<String, dynamic> args = {};
-            try {
-              args = jsonDecode(tc.function.arguments) as Map<String, dynamic>;
-            } catch (_) {}
-            toolCalls.add(
-              LLMToolCall(
-                id: tc.id,
-                name: tc.function.name,
-                arguments: args,
-              ),
-            );
-          }
-        }
-      }
-
-      return LLMResponse(text: answer, toolCalls: toolCalls);
-    } finally {
-      // Client is cleaned up by garbage collection
     }
+
+    return LLMResponse(text: answer, toolCalls: toolCalls);
   }
 
   static Future<LLMResponse> _generateOpenAI(
@@ -194,10 +246,15 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = openai.OpenAIClient(
-      config: openai.OpenAIConfig(
-        authProvider: openai.ApiKeyProvider(config.apiKey),
-        baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.openai.com/v1',
+    final baseUrl = config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.openai.com/v1';
+    final cacheKey = 'openai_${config.apiKey}_$baseUrl';
+    final client = _getOrCreateClient(
+      key: cacheKey,
+      create: () => openai.OpenAIClient(
+        config: openai.OpenAIConfig(
+          authProvider: openai.ApiKeyProvider(config.apiKey),
+          baseUrl: baseUrl,
+        ),
       ),
     );
     return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
@@ -209,12 +266,17 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = openai.OpenAIClient(
-      config: openai.OpenAIConfig(
-        authProvider: openai.ApiKeyProvider(config.apiKey),
-        baseUrl: config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.mistral.ai/v1',
+    final baseUrl = config.baseUrl.trim().isNotEmpty ? config.baseUrl : 'https://api.mistral.ai/v1';
+    final cacheKey = 'mistral_${config.apiKey}_$baseUrl';
+    final client = _getOrCreateClient(
+      key: cacheKey,
+      create: () => openai.OpenAIClient(
+        config: openai.OpenAIConfig(
+          authProvider: openai.ApiKeyProvider(config.apiKey),
+          baseUrl: baseUrl,
+        ),
+        httpClient: _MistralPatchClient(http.Client()),
       ),
-      httpClient: _MistralPatchClient(http.Client()),
     );
     return await _generateOpenAIWithClient(client, config, messages, tools, systemPrompt);
   }
@@ -228,14 +290,17 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = anthropic.AnthropicClient(
-      config: anthropic.AnthropicConfig(
-        authProvider: anthropic.ApiKeyProvider(config.apiKey),
+    final cacheKey = 'anthropic_${config.apiKey}';
+    final client = _getOrCreateClient(
+      key: cacheKey,
+      create: () => anthropic.AnthropicClient(
+        config: anthropic.AnthropicConfig(
+          authProvider: anthropic.ApiKeyProvider(config.apiKey),
+        ),
       ),
     );
 
-    try {
-      final List<anthropic.InputMessage> anthropicMsgs = [];
+    final List<anthropic.InputMessage> anthropicMsgs = [];
 
       for (final msg in messages) {
         if (msg.role == ChatRole.system) continue;
@@ -323,9 +388,6 @@ class LLMService {
       }
 
       return LLMResponse(text: textBuffer.toString(), toolCalls: toolCalls);
-    } finally {
-      // Client is cleaned up by garbage collection
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -337,118 +399,117 @@ class LLMService {
     List<MCPTool> tools,
     String? systemPrompt,
   ) async {
-    final client = gemini.GoogleAIClient(
-      config: gemini.GoogleAIConfig.googleAI(
-        authProvider: gemini.ApiKeyProvider(config.apiKey),
+    final cacheKey = 'gemini_${config.apiKey}';
+    final client = _getOrCreateClient(
+      key: cacheKey,
+      create: () => gemini.GoogleAIClient(
+        config: gemini.GoogleAIConfig.googleAI(
+          authProvider: gemini.ApiKeyProvider(config.apiKey),
+        ),
       ),
     );
 
-    try {
-      final List<gemini.Tool> geminiTools = [];
-      if (tools.isNotEmpty && config.useNativeToolCall) {
-        final declarations = <gemini.FunctionDeclaration>[];
-        for (final t in tools) {
-          declarations.add(
-            gemini.FunctionDeclaration(
-              name: t.name,
-              description: t.description ?? '',
-              parameters: _sanitizeGeminiSchema(t.inputSchema),
+    final List<gemini.Tool> geminiTools = [];
+    if (tools.isNotEmpty && config.useNativeToolCall) {
+      final declarations = <gemini.FunctionDeclaration>[];
+      for (final t in tools) {
+        declarations.add(
+          gemini.FunctionDeclaration(
+            name: t.name,
+            description: t.description ?? '',
+            parameters: _sanitizeGeminiSchema(t.inputSchema),
+          ),
+        );
+      }
+      geminiTools.add(gemini.Tool(functionDeclarations: declarations));
+    }
+
+    final List<gemini.Content> contentList = [];
+    for (final msg in messages) {
+      if (msg.role == ChatRole.system) continue;
+
+      switch (msg.role) {
+        case ChatRole.user:
+          contentList.add(
+            gemini.Content(
+              role: 'user',
+              parts: [gemini.Part.text(msg.content)],
             ),
           );
-        }
-        geminiTools.add(gemini.Tool(functionDeclarations: declarations));
-      }
-
-      final List<gemini.Content> contentList = [];
-      for (final msg in messages) {
-        if (msg.role == ChatRole.system) continue;
-
-        switch (msg.role) {
-          case ChatRole.user:
+        case ChatRole.assistant:
+          if (msg.type == MessageType.toolCall) {
             contentList.add(
               gemini.Content(
-                role: 'user',
-                parts: [gemini.Part.text(msg.content)],
-              ),
-            );
-          case ChatRole.assistant:
-            if (msg.type == MessageType.toolCall) {
-              contentList.add(
-                gemini.Content(
-                  role: 'model',
-                  parts: [
-                    gemini.Part.functionCall(
-                      msg.toolName ?? '',
-                      args: msg.toolArguments,
-                    )
-                  ],
-                ),
-              );
-            } else {
-              contentList.add(
-                gemini.Content(
-                  role: 'model',
-                  parts: [gemini.Part.text(msg.content)],
-                ),
-              );
-            }
-          case ChatRole.tool:
-            contentList.add(
-              gemini.Content(
-                role: 'function',
+                role: 'model',
                 parts: [
-                  gemini.Part.functionResponse(
+                  gemini.Part.functionCall(
                     msg.toolName ?? '',
-                    {'content': msg.content},
+                    args: msg.toolArguments,
                   )
                 ],
               ),
             );
-          default:
-            break;
-        }
-      }
-
-      final response = await client.models.generateContent(
-        model: config.model.trim().isNotEmpty ? config.model : 'gemini-2.5-flash',
-        request: gemini.GenerateContentRequest(
-          contents: contentList,
-          tools: geminiTools.isNotEmpty ? geminiTools : null,
-          systemInstruction: systemPrompt != null && systemPrompt.trim().isNotEmpty
-              ? gemini.Content(parts: [gemini.Part.text(systemPrompt)])
-              : null,
-          generationConfig: gemini.GenerationConfig(
-            temperature: config.temperature,
-            maxOutputTokens: config.maxTokens > 0 ? config.maxTokens : null,
-            topP: config.topP,
-            topK: config.topK,
-            candidateCount: 1,
-          ),
-        ),
-      );
-
-      final text = response.text ?? '';
-      final toolCalls = <LLMToolCall>[];
-
-      final functionCalls = response.functionCalls;
-      if (functionCalls.isNotEmpty) {
-        for (final fc in functionCalls) {
-          final args = Map<String, dynamic>.from(fc.args ?? {});
-          final argHash = jsonEncode(args).hashCode.toRadixString(16);
-          toolCalls.add(
-            LLMToolCall(
-              id: 'call_${fc.name}_$argHash',
-              name: fc.name,
-              arguments: args,
+          } else {
+            contentList.add(
+              gemini.Content(
+                role: 'model',
+                parts: [gemini.Part.text(msg.content)],
+              ),
+            );
+          }
+        case ChatRole.tool:
+          contentList.add(
+            gemini.Content(
+              role: 'function',
+              parts: [
+                gemini.Part.functionResponse(
+                  msg.toolName ?? '',
+                  {'content': msg.content},
+                )
+              ],
             ),
           );
-        }
+        default:
+          break;
       }
-
-      return LLMResponse(text: text, toolCalls: toolCalls);
-    } finally {
-      client.close();
     }
+
+    final response = await client.models.generateContent(
+      model: config.model.trim().isNotEmpty ? config.model : 'gemini-2.5-flash',
+      request: gemini.GenerateContentRequest(
+        contents: contentList,
+        tools: geminiTools.isNotEmpty ? geminiTools : null,
+        systemInstruction: systemPrompt != null && systemPrompt.trim().isNotEmpty
+            ? gemini.Content(parts: [gemini.Part.text(systemPrompt)])
+            : null,
+        generationConfig: gemini.GenerationConfig(
+          temperature: config.temperature,
+          maxOutputTokens: config.maxTokens > 0 ? config.maxTokens : null,
+          topP: config.topP,
+          topK: config.topK,
+          candidateCount: 1,
+        ),
+      ),
+    );
+
+    final text = response.text ?? '';
+    final toolCalls = <LLMToolCall>[];
+
+    final functionCalls = response.functionCalls;
+    if (functionCalls.isNotEmpty) {
+      for (final fc in functionCalls) {
+        final args = Map<String, dynamic>.from(fc.args ?? {});
+        toolCalls.add(
+          LLMToolCall(
+            id: 'call_${fc.name}_${_uuid.v4()}',
+            name: fc.name,
+            arguments: args,
+          ),
+        );
+      }
+    }
+
+    return LLMResponse(text: text, toolCalls: toolCalls);
   }
 
   static gemini.Schema _sanitizeGeminiSchema(Map<String, dynamic>? schema) {
@@ -511,108 +572,108 @@ class LLMService {
     if (config.apiKey.trim().isNotEmpty) {
       headers['Authorization'] = 'Bearer ${config.apiKey.trim()}';
     }
-    final client = ollama.OllamaClient(
-      config: ollama.OllamaConfig(
-        baseUrl: config.baseUrl.trim().isNotEmpty
-            ? config.baseUrl
-            : 'http://localhost:11434/api',
-        defaultHeaders: headers,
+    final baseUrl = config.baseUrl.trim().isNotEmpty
+        ? config.baseUrl
+        : 'http://localhost:11434/api';
+    final cacheKey = 'ollama_${config.apiKey}_$baseUrl';
+    final client = _getOrCreateClient(
+      key: cacheKey,
+      create: () => ollama.OllamaClient(
+        config: ollama.OllamaConfig(
+          baseUrl: baseUrl,
+          defaultHeaders: headers,
+        ),
       ),
     );
 
-    try {
-      final List<ollama.ChatMessage> ollamaMsgs = [];
+    final List<ollama.ChatMessage> ollamaMsgs = [];
 
-      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-        ollamaMsgs.add(
-          ollama.ChatMessage(
-            role: ollama.MessageRole.system,
-            content: systemPrompt,
-          ),
-        );
-      }
-
-      for (final msg in messages) {
-        ollama.MessageRole role = ollama.MessageRole.user;
-        if (msg.role == ChatRole.assistant) {
-          role = ollama.MessageRole.assistant;
-        } else if (msg.role == ChatRole.system) {
-          role = ollama.MessageRole.system;
-        } else if (msg.role == ChatRole.tool) {
-          role = ollama.MessageRole.tool;
-        }
-
-        List<ollama.ToolCall>? toolCalls;
-        if (msg.type == MessageType.toolCall) {
-          toolCalls = [
-            ollama.ToolCall(
-              function: ollama.ToolCallFunction(
-                name: msg.toolName ?? '',
-                arguments: msg.toolArguments ?? {},
-              ),
-            )
-          ];
-        }
-
-        ollamaMsgs.add(
-          ollama.ChatMessage(
-            role: role,
-            content: msg.content,
-            toolCalls: toolCalls,
-          ),
-        );
-      }
-
-      final List<ollama.ToolDefinition> ollamaTools = [];
-      if (tools.isNotEmpty && config.useNativeToolCall) {
-        for (final t in tools) {
-          ollamaTools.add(
-            ollama.ToolDefinition(
-              function: ollama.ToolFunction(
-                name: t.name,
-                description: t.description ?? '',
-                parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
-              ),
-            ),
-          );
-        }
-      }
-
-      final response = await client.chat.create(
-        request: ollama.ChatRequest(
-          model: config.model,
-          messages: ollamaMsgs,
-          tools: ollamaTools.isNotEmpty ? ollamaTools : null,
-          options: ollama.ModelOptions(
-            temperature: config.temperature,
-            numPredict: config.maxTokens > 0 ? config.maxTokens : null,
-            seed: config.seed,
-          ),
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      ollamaMsgs.add(
+        ollama.ChatMessage(
+          role: ollama.MessageRole.system,
+          content: systemPrompt,
         ),
       );
+    }
 
-      final answer = response.message?.content ?? '';
-      final toolCalls = <LLMToolCall>[];
-
-      if (response.message?.toolCalls != null && response.message!.toolCalls!.isNotEmpty) {
-        for (final tc in response.message!.toolCalls!) {
-          final name = tc.function?.name ?? '';
-          final args = tc.function?.arguments ?? {};
-          final argHash = jsonEncode(args).hashCode.toRadixString(16);
-          toolCalls.add(
-            LLMToolCall(
-              id: 'call_${name}_$argHash',
-              name: name,
-              arguments: args,
-            ),
-          );
-        }
+    for (final msg in messages) {
+      ollama.MessageRole role = ollama.MessageRole.user;
+      if (msg.role == ChatRole.assistant) {
+        role = ollama.MessageRole.assistant;
+      } else if (msg.role == ChatRole.system) {
+        role = ollama.MessageRole.system;
+      } else if (msg.role == ChatRole.tool) {
+        role = ollama.MessageRole.tool;
       }
 
-      return LLMResponse(text: answer, toolCalls: toolCalls);
-    } finally {
-      // ollama client uses standard http which closes connection on garbage collect
+      List<ollama.ToolCall>? toolCalls;
+      if (msg.type == MessageType.toolCall) {
+        toolCalls = [
+          ollama.ToolCall(
+            function: ollama.ToolCallFunction(
+              name: msg.toolName ?? '',
+              arguments: msg.toolArguments ?? {},
+            ),
+          )
+        ];
+      }
+
+      ollamaMsgs.add(
+        ollama.ChatMessage(
+          role: role,
+          content: msg.content,
+          toolCalls: toolCalls,
+        ),
+      );
     }
+
+    final List<ollama.ToolDefinition> ollamaTools = [];
+    if (tools.isNotEmpty && config.useNativeToolCall) {
+      for (final t in tools) {
+        ollamaTools.add(
+          ollama.ToolDefinition(
+            function: ollama.ToolFunction(
+              name: t.name,
+              description: t.description ?? '',
+              parameters: t.inputSchema ?? {'type': 'object', 'properties': {}},
+            ),
+          ),
+        );
+      }
+    }
+
+    final response = await client.chat.create(
+      request: ollama.ChatRequest(
+        model: config.model,
+        messages: ollamaMsgs,
+        tools: ollamaTools.isNotEmpty ? ollamaTools : null,
+        options: ollama.ModelOptions(
+          temperature: config.temperature,
+          numPredict: config.maxTokens > 0 ? config.maxTokens : null,
+          seed: config.seed,
+        ),
+      ),
+    );
+
+    final answer = response.message?.content ?? '';
+    final toolCalls = <LLMToolCall>[];
+
+    if (response.message?.toolCalls != null && response.message!.toolCalls!.isNotEmpty) {
+      for (final tc in response.message!.toolCalls!) {
+        final name = tc.function?.name ?? '';
+        final args = tc.function?.arguments ?? {};
+        toolCalls.add(
+          LLMToolCall(
+            id: 'call_${name}_${_uuid.v4()}',
+            name: name,
+            arguments: args,
+          ),
+        );
+      }
+    }
+
+    return LLMResponse(text: answer, toolCalls: toolCalls);
   }
 }
 

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../models.dart';
 import '../../playground_controller.dart';
 import '../local_mcp_client.dart';
@@ -47,8 +46,6 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
     }
   }
 
-  static const _registryCacheKey = 'official_mcp_registry_cache';
-  static const _registryCacheTsKey = 'official_mcp_registry_cache_ts';
   static const _registryRemoteUrl = 'https://registry.modelcontextprotocol.io/v0.1/servers?limit=100';
   static const _cacheMaxAge = Duration(hours: 24);
 
@@ -64,9 +61,9 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
     // 1. Try to read from cache first (if not forcing refresh)
     if (!forceRefresh) {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final ts = prefs.getInt(_registryCacheTsKey);
-        final cachedJson = prefs.getString(_registryCacheKey);
+        final storage = widget.controller.storage;
+        final ts = await storage.loadServerCatalogTimestamp();
+        final cachedJson = await storage.loadServerCatalog();
         if (ts != null && cachedJson != null) {
           final age = DateTime.now().millisecondsSinceEpoch - ts;
           if (age < _cacheMaxAge.inMilliseconds) {
@@ -112,9 +109,9 @@ class _McpServerRegistryTabState extends State<McpServerRegistryTab> {
           nextCursor = decoded['metadata']['nextCursor'] as String?;
         }
         if (list.isNotEmpty) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_registryCacheKey, response.body);
-          await prefs.setInt(_registryCacheTsKey, DateTime.now().millisecondsSinceEpoch);
+          final storage = widget.controller.storage;
+          await storage.saveServerCatalog(response.body);
+          await storage.saveServerCatalogTimestamp(DateTime.now().millisecondsSinceEpoch);
 
           if (mounted) {
             setState(() {

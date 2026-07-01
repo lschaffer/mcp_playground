@@ -6,7 +6,6 @@ import 'package:uuid/uuid.dart';
 import 'models.dart';
 import 'local_tools.dart';
 import 'playground_controller.dart';
-import 'src/local_mcp_client.dart';
 import 'llm_service.dart';
 import 'src/widgets/chat_bubble.dart';
 import 'src/widgets/settings_drawer.dart';
@@ -15,48 +14,10 @@ import 'src/widgets/agent_inspector.dart';
 import 'src/widgets/llm_config_form.dart';
 import 'src/mcp_localizations.dart';
 import 'src/widgets/sub_prompt_list_editor.dart';
+import 'src/utils/mime_utils.dart';
+import 'src/widgets/initial_mcp_install_progress_dialog.dart';
 
-/// Simple MIME-type lookup by file extension (replaces the `mime` package).
-String _mimeFromExtension(String name) {
-  final ext = name.split('.').last.toLowerCase();
-  const map = <String, String>{
-    'txt': 'text/plain',
-    'md': 'text/markdown',
-    'csv': 'text/csv',
-    'json': 'application/json',
-    'xml': 'application/xml',
-    'yaml': 'text/yaml',
-    'yml': 'text/yaml',
-    'html': 'text/html',
-    'htm': 'text/html',
-    'js': 'application/javascript',
-    'dart': 'text/x-dart',
-    'py': 'text/x-python',
-    'sh': 'application/x-sh',
-    'bat': 'application/x-bat',
-    'ps1': 'application/x-powershell',
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx':
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx':
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'png': 'image/png',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'gif': 'image/gif',
-    'svg': 'image/svg+xml',
-    'webp': 'image/webp',
-    'zip': 'application/zip',
-    'gz': 'application/gzip',
-    'tar': 'application/x-tar',
-    'log': 'text/plain',
-  };
-  return map[ext] ?? 'application/octet-stream';
-}
+String _mimeFromExtension(String name) => mimeFromExtension(name);
 
 /// An interactive AI Agent Playground widget for Flutter.
 ///
@@ -250,7 +211,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) {
-        return _InitialMcpInstallProgressDialog(
+        return InitialMcpInstallProgressDialog(
           serversToInstall: serversToInstall,
           controller: _controller,
           locale: widget.locale,
@@ -2232,123 +2193,4 @@ class _CustomProviderCache {
   });
 }
 
-class _InitialMcpInstallProgressDialog extends StatefulWidget {
-  final List<LocalMcpServerSetup> serversToInstall;
-  final PlaygroundController controller;
-  final String? locale;
 
-  const _InitialMcpInstallProgressDialog({
-    required this.serversToInstall,
-    required this.controller,
-    this.locale,
-  });
-
-  @override
-  State<_InitialMcpInstallProgressDialog> createState() =>
-      _InitialMcpInstallProgressDialogState();
-}
-
-class _InitialMcpInstallProgressDialogState
-    extends State<_InitialMcpInstallProgressDialog> {
-  String _currentServerName = '';
-  String _statusMessage = '';
-  double? _progress;
-  int _currentIndex = 0;
-
-  McpPlaygroundLocalizations get l10n {
-    if (widget.locale != null) {
-      return McpPlaygroundLocalizations(Locale(widget.locale!));
-    }
-    return McpPlaygroundLocalizations.of(context);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _statusMessage = l10n.get('preparingRuntime');
-        });
-        _runInstallations();
-      }
-    });
-  }
-
-  Future<void> _runInstallations() async {
-    for (int i = 0; i < widget.serversToInstall.length; i++) {
-      final setup = widget.serversToInstall[i];
-      if (!mounted) return;
-      final l10n = this.l10n;
-      setState(() {
-        _currentIndex = i;
-        _currentServerName = setup.name;
-        _statusMessage = l10n.get('preparingRuntime');
-        _progress = i / widget.serversToInstall.length;
-      });
-
-      // Find the server config in the controller
-      final config = widget.controller.servers.firstWhere((s) => s.name == setup.name);
-
-      final error = await LocalMcpRuntime.install(
-        config,
-        onProgress: (p) {
-          if (mounted) {
-            setState(() {
-              _statusMessage = p.message;
-            });
-          }
-        },
-      );
-
-      if (error != null) {
-        if (mounted) {
-          final errMsg = l10n.locale.languageCode == 'de'
-              ? 'Installation von ${setup.name} fehlgeschlagen: $error'
-              : 'Failed to install ${setup.name}: $error';
-          setState(() {
-            _statusMessage = errMsg;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errMsg),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-      } else {
-        // Mark server as installed!
-        final updatedConfig = config.copyWith(isInstalled: true);
-        await widget.controller.updateServer(updatedConfig);
-      }
-    }
-
-    if (mounted) {
-      Navigator.pop(context); // Close the dialog
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = this.l10n;
-    return AlertDialog(
-      title: Text(l10n.get('initializingServers')),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.locale.languageCode == 'de'
-                ? 'Installiere $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})'
-                : 'Installing $_currentServerName (${_currentIndex + 1}/${widget.serversToInstall.length})',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Text(_statusMessage),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(value: _progress),
-        ],
-      ),
-    );
-  }
-}

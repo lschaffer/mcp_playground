@@ -12,7 +12,8 @@ enum LlmProvider {
   gemini,
   ollama,
   openaiCompatible,
-  mistral;
+  mistral,
+  embedded;
 
   String get configKey {
     switch (this) {
@@ -30,6 +31,8 @@ enum LlmProvider {
         return 'openai_compatible';
       case LlmProvider.mistral:
         return 'mistral';
+      case LlmProvider.embedded:
+        return 'embedded';
     }
   }
 
@@ -58,6 +61,8 @@ enum LlmProvider {
         return 'Custom OpenAI Compatible';
       case LlmProvider.mistral:
         return 'Mistral AI';
+      case LlmProvider.embedded:
+        return 'Embedded (on-device)';
     }
   }
 }
@@ -107,6 +112,7 @@ class LlmConfig {
 
   bool get isConfigured {
     if (provider == LlmProvider.none || model.trim().isEmpty) return false;
+    if (provider == LlmProvider.embedded) return true;
     if (provider == LlmProvider.ollama || provider == LlmProvider.openaiCompatible) {
       return baseUrl.trim().isNotEmpty;
     }
