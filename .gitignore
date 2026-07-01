@@ -35,3 +35,12 @@ migrate_working_dir/
 .venv/
 node_modules/
 
+# Recursively ignore build and Dart tool caches
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/pubspec.lock
+
+

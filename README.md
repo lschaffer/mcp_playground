@@ -262,9 +262,10 @@ On desktop platforms (macOS, Windows, Linux), you can register, install, and run
 
 ## 📁 Examples
 
-This repository contains a comprehensive showcase example showing both local Dart-native tools and local stdio MCP servers:
+This repository contains two examples showing different use cases:
 
-- **[example](example)**: A complete example demonstrating all features (Weather, SSH, Chart generator local tools) and auto-installing/configuring local `Git` and `Filesystem` MCP servers.
+- **[example](example)**: A complete, fully-featured example showcasing standard LLMs, remote HTTP MCP servers, local stdio subprocesses, and custom local tools (Weather, SSH, and Chart generator).
+- **[example_embedded/lib/main.dart](example_embedded/lib/main.dart)**: A secondary example showcasing offline, fully on-device GGUF execution with automated download/load progress modal dialogs.
 
 ---
 

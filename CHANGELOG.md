@@ -1,15 +1,9 @@
 ## 0.0.9
 
-* Cached `SharedPreferences` instances inside both storage delegates and model managers to eliminate redundant async initialization overhead.
-* Cached LLM clients (OpenAI, Anthropic, Gemini, Ollama) by provider, base URL, and API key in a static cache inside `LLMService` to reuse HTTP connections.
-* Extracted MIME mapping and text file detection logic into a unified utility module `src/utils/mime_utils.dart` to resolve code duplication.
-* Split `mcp_playground.dart` by relocating `InitialMcpInstallProgressDialog` into its own file under `src/widgets/`.
-* Extracted repetitive server connection and caching tool logic to a private helper `_connectClientAndCacheTools` in `PlaygroundController`.
-* Added catalog caching support to `McpPlaygroundStorageDelegate` and re-routed registry catalog persistence through the storage delegate.
-* Replaced unstable hashCode-based tool call IDs with proper stable UUIDs.
-* Unified execution iteration limits and eliminated a redundant inner step limits loop.
-* Suppressed system prompt tool description text injection when native tool calling is active.
-* Added a safety guard to `ChangeNotifier` updates in `MCPClient` to prevent "used after being disposed" errors from asynchronous disconnection calls.
+* Added embedded model support (discovery from HuggingFace, local GGUF loading, and on-device execution).
+* Performed codebase audit and refactoring to optimize services, adapters, and caching.
+* Added an embedded example app showcasing offline on-device model configuration.
+
 
 ## 0.0.8
 

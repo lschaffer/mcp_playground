@@ -16,6 +16,9 @@ import 'src/mcp_localizations.dart';
 import 'src/widgets/sub_prompt_list_editor.dart';
 import 'src/utils/mime_utils.dart';
 import 'src/widgets/initial_mcp_install_progress_dialog.dart';
+import 'src/services/embedded_llm/embedded_model.dart';
+import 'src/services/embedded_llm/embedded_model_manager.dart';
+import 'src/services/embedded_llm/embedded_llm_adapter.dart';
 
 String _mimeFromExtension(String name) => mimeFromExtension(name);
 
@@ -136,6 +139,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkAndInstallInitialLocalMcpServers();
+      await _checkAndDownloadInitialEmbeddedModel();
     });
   }
 
@@ -252,9 +256,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
     super.dispose();
   }
 
-  void _handleSend() {
+  void _handleSend() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty && _attachments.isEmpty) return;
+
+    final loaded = await _ensureEmbeddedModelLoaded();
+    if (!loaded) return;
 
     final listToSend = List<MessageAttachment>.from(_attachments);
     _inputCtrl.clear();
@@ -1034,6 +1041,166 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
+  Future<void> _checkAndDownloadInitialEmbeddedModel() async {
+    // Wait until controller is done loading from storage
+    while (_controller.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    final initialLlm = widget.initialLlmConfig;
+    if (initialLlm == null || initialLlm.provider != LlmProvider.embedded) {
+      return;
+    }
+
+    String filename = initialLlm.model.trim();
+    if (filename == 'ministral3-3b-instruct q4' || filename == 'ministral-3b-instruct q4') {
+      filename = 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf';
+    }
+
+    if (filename.isEmpty) return;
+
+    // Check if the custom GGUF model is registered in our local custom models db
+    final customs = await EmbeddedModelManager.instance.loadCustomModels();
+    EmbeddedGgufModel? model = customs.where((m) => m.filename == filename).firstOrNull;
+
+    if (model == null && _defaultModelMetadata.containsKey(filename)) {
+      final meta = _defaultModelMetadata[filename]!;
+      model = EmbeddedGgufModel(
+        id: meta['repoId']!,
+        displayName: meta['displayName']!,
+        filename: filename,
+        url: meta['url']!,
+        description: 'Auto-registered model',
+        sizeBytes: int.tryParse(meta['size']!) ?? 0,
+        minRamGb: int.tryParse(meta['minRam']!) ?? 4,
+        contextSize: int.tryParse(meta['contextSize']!) ?? 32768,
+      );
+      await EmbeddedModelManager.instance.addCustomModel(model);
+    }
+
+    model ??= EmbeddedGgufModel(
+      id: filename,
+      displayName: filename,
+      filename: filename,
+      url: '',
+      description: '',
+    );
+
+    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(filename);
+    final fileExists = await File(fullPath).exists() || (model.url.isNotEmpty && await File(model.url).exists());
+
+    if (fileExists) {
+      final updated = initialLlm.copyWith(model: filename);
+      await _controller.updateLlmConfig(updated);
+    } else {
+      if (model.url.isEmpty) {
+        return; // No URL to download
+      }
+
+      if (!mounted) return;
+      final downloaded = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _ModelDownloadProgressDialog(model: model!),
+      );
+
+      if (downloaded == true) {
+        final updated = initialLlm.copyWith(model: filename);
+        await _controller.updateLlmConfig(updated);
+      }
+    }
+  }
+
+  Future<bool> _ensureEmbeddedModelLoaded() async {
+    final config = _controller.activeLlmConfig;
+    if (config.provider != LlmProvider.embedded) return true;
+
+    String filename = config.model.trim();
+    if (filename == 'ministral3-3b-instruct q4' || filename == 'ministral-3b-instruct q4') {
+      filename = 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf';
+    }
+
+    if (filename.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select an embedded model in LLM Settings.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final adapter = EmbeddedLlmAdapter.instance;
+    if (adapter.isLoaded && (adapter.loadedModelPath?.endsWith(filename) ?? false)) {
+      return true;
+    }
+
+    final customs = await EmbeddedModelManager.instance.loadCustomModels();
+    EmbeddedGgufModel? model = customs.where((m) => m.filename == filename).firstOrNull;
+
+    if (model == null && _defaultModelMetadata.containsKey(filename)) {
+      final meta = _defaultModelMetadata[filename]!;
+      model = EmbeddedGgufModel(
+        id: meta['repoId']!,
+        displayName: meta['displayName']!,
+        filename: filename,
+        url: meta['url']!,
+        description: 'Auto-registered model',
+        sizeBytes: int.tryParse(meta['size']!) ?? 0,
+        minRamGb: int.tryParse(meta['minRam']!) ?? 4,
+        contextSize: int.tryParse(meta['contextSize']!) ?? 32768,
+      );
+      await EmbeddedModelManager.instance.addCustomModel(model);
+    }
+
+    model ??= EmbeddedGgufModel(
+      id: filename,
+      displayName: filename,
+      filename: filename,
+      url: '',
+      description: '',
+    );
+
+    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(filename);
+    final fileExists = await File(fullPath).exists() || (model.url.isNotEmpty && await File(model.url).exists());
+
+    if (!fileExists) {
+      if (model.url.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Model file "$filename" not found and no download URL is available.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return false;
+      }
+
+      if (!mounted) return false;
+      final downloaded = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _ModelDownloadProgressDialog(model: model!),
+      );
+
+      if (downloaded != true) {
+        return false;
+      }
+    }
+
+    if (!mounted) return false;
+    final loaded = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _ModelLoadProgressDialog(model: model!),
+    );
+
+    return loaded ?? false;
+  }
+
   LlmConfig _getActiveLlmConfig() {
     if (_useCustomLlm) {
       return LlmConfig(
@@ -1129,7 +1296,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
     }
   }
 
-  void _startPlayground() {
+  void _startPlayground() async {
     // 1. Check if LLM is configured
     LlmConfig? nextCustom;
     if (_useCustomLlm) {
@@ -1175,6 +1342,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
     _controller.chatMode = _chatMode;
     _controller.stopAfterToolCall = _stopAfterToolCall;
     _controller.customLlmConfig = nextCustom;
+
+    final loaded = await _ensureEmbeddedModelLoaded();
+    if (!loaded) return;
 
     setState(() {
       _playgroundStarted = true;
@@ -2191,6 +2361,155 @@ class _CustomProviderCache {
     required this.apiKey,
     required this.baseUrl,
   });
+}
+
+const Map<String, Map<String, String>> _defaultModelMetadata = {
+  'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf': {
+    'repoId': 'lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF',
+    'displayName': 'Ministral-3-3B-Instruct-2512-Q4_K_M',
+    'url': 'https://huggingface.co/lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF/resolve/main/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf',
+    'size': '2140000000',
+    'minRam': '4',
+    'contextSize': '32768',
+  },
+};
+
+class _ModelDownloadProgressDialog extends StatefulWidget {
+  final EmbeddedGgufModel model;
+  const _ModelDownloadProgressDialog({required this.model});
+
+  @override
+  State<_ModelDownloadProgressDialog> createState() => _ModelDownloadProgressDialogState();
+}
+
+class _ModelDownloadProgressDialogState extends State<_ModelDownloadProgressDialog> {
+  double _progress = 0.0;
+  String _status = 'Starting download...';
+  late final DownloadCancelToken _cancelToken;
+
+  @override
+  void initState() {
+    super.initState();
+    _cancelToken = DownloadCancelToken();
+    _startDownload();
+  }
+
+  Future<void> _startDownload() async {
+    try {
+      await EmbeddedModelManager.instance.downloadModel(
+        url: widget.model.url,
+        filename: widget.model.filename,
+        cancelToken: _cancelToken,
+        onProgress: (p) {
+          if (mounted) {
+            setState(() {
+              _progress = p;
+              _status = 'Downloading... ${(p * 100).toStringAsFixed(1)}%';
+            });
+          }
+        },
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e'), backgroundColor: Colors.red),
+        );
+        Navigator.pop(context, false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Downloading ${widget.model.displayName}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(_status),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: _progress),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            _cancelToken.cancel();
+            Navigator.pop(context, false);
+          },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModelLoadProgressDialog extends StatefulWidget {
+  final EmbeddedGgufModel model;
+  const _ModelLoadProgressDialog({required this.model});
+
+  @override
+  State<_ModelLoadProgressDialog> createState() => _ModelLoadProgressDialogState();
+}
+
+class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
+  double _progress = 0.0;
+  String _status = 'Loading model into memory...';
+
+  @override
+  void initState() {
+    super.initState();
+    _startLoad();
+  }
+
+  Future<void> _startLoad() async {
+    try {
+      final gpuLayers = await EmbeddedModelManager.instance.getGpuLayers(widget.model.filename);
+      final fullPath = File(widget.model.url).existsSync()
+          ? widget.model.url
+          : await EmbeddedModelManager.instance.fullPathForFilename(widget.model.filename);
+
+      await EmbeddedLlmAdapter.instance.initialize(
+        fullPath,
+        gpuLayers: gpuLayers,
+        contextSize: widget.model.contextSize,
+        onProgress: (p) {
+          if (mounted) {
+            setState(() {
+              _progress = p;
+              _status = 'Loading model into memory... ${(p * 100).toStringAsFixed(0)}%';
+            });
+          }
+        },
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Load failed: $e'), backgroundColor: Colors.red),
+        );
+        Navigator.pop(context, false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Loading ${widget.model.displayName}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(_status),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: _progress),
+        ],
+      ),
+    );
+  }
 }
 
 

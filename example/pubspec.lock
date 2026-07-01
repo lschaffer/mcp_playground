@@ -518,7 +518,14 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.0.8"
+    version: "0.0.9"
+  mcp_playground_shared_tools:
+    dependency: "direct main"
+    description:
+      path: "../shared_tools"
+      relative: true
+    source: path
+    version: "1.0.0"
   meta:
     dependency: transitive
     description:
