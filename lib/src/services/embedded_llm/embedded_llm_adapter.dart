@@ -135,6 +135,12 @@ class EmbeddedLlmAdapter {
     final historySlice = lastIsToolResult ? nonSystem : nonSystem.take(nonSystem.length - 1).toList();
     _populateHistory(session, historySlice);
 
+    if (!lastIsToolResult) {
+      if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
+        session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ''));
+      }
+    }
+
     final inputParts = <LlamaContentPart>[];
     if (!lastIsToolResult) {
       final lastMsg = nonSystem.last;
@@ -193,6 +199,9 @@ class EmbeddedLlmAdapter {
       final msg = messages[i];
 
       if (msg.role == ChatRole.user) {
+        if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
+          session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ''));
+        }
         session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.user, text: msg.content));
         i++;
       } else if (msg.role == ChatRole.assistant) {
