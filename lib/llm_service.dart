@@ -300,45 +300,59 @@ class LLMService {
       ),
     );
 
-    final List<anthropic.InputMessage> anthropicMsgs = [];
+    final List<MapEntry<anthropic.MessageRole, List<anthropic.InputContentBlock>>> grouped = [];
 
-      for (final msg in messages) {
-        if (msg.role == ChatRole.system) continue;
+    for (final msg in messages) {
+      if (msg.role == ChatRole.system) continue;
 
-        switch (msg.role) {
-          case ChatRole.user:
-            anthropicMsgs.add(
-              anthropic.InputMessage.user(msg.content),
-            );
-          case ChatRole.assistant:
-            if (msg.type == MessageType.toolCall) {
-              anthropicMsgs.add(
-                anthropic.InputMessage.assistantBlocks([
-                  anthropic.InputContentBlock.toolUse(
-                    id: msg.id,
-                    name: msg.toolName ?? '',
-                    input: msg.toolArguments ?? {},
-                  ),
-                ]),
-              );
-            } else {
-              anthropicMsgs.add(
-                anthropic.InputMessage.assistant(msg.content),
-              );
-            }
-          case ChatRole.tool:
-            anthropicMsgs.add(
-              anthropic.InputMessage.userBlocks([
-                anthropic.InputContentBlock.toolResultText(
-                  toolUseId: msg.id,
-                  text: msg.content,
-                ),
-              ]),
-            );
-          default:
-            break;
+      final isAssistant = (msg.role == ChatRole.assistant);
+      final anthropicRole = isAssistant ? anthropic.MessageRole.assistant : anthropic.MessageRole.user;
+
+      final List<anthropic.InputContentBlock> blocks = [];
+      if (msg.role == ChatRole.user) {
+        if (msg.content.isNotEmpty) {
+          blocks.add(anthropic.InputContentBlock.text(msg.content));
         }
+      } else if (msg.role == ChatRole.assistant) {
+        if (msg.type == MessageType.toolCall) {
+          blocks.add(
+            anthropic.InputContentBlock.toolUse(
+              id: msg.id,
+              name: msg.toolName ?? '',
+              input: msg.toolArguments ?? {},
+            ),
+          );
+        } else {
+          if (msg.content.isNotEmpty) {
+            blocks.add(anthropic.InputContentBlock.text(msg.content));
+          }
+        }
+      } else if (msg.role == ChatRole.tool) {
+        blocks.add(
+          anthropic.InputContentBlock.toolResultText(
+            toolUseId: msg.id,
+            text: msg.content,
+          ),
+        );
       }
+
+      if (blocks.isEmpty) continue;
+
+      if (grouped.isNotEmpty && grouped.last.key == anthropicRole) {
+        grouped.last.value.addAll(blocks);
+      } else {
+        grouped.add(MapEntry(anthropicRole, blocks));
+      }
+    }
+
+    final List<anthropic.InputMessage> anthropicMsgs = [];
+    for (final entry in grouped) {
+      if (entry.key == anthropic.MessageRole.assistant) {
+        anthropicMsgs.add(anthropic.InputMessage.assistantBlocks(entry.value));
+      } else {
+        anthropicMsgs.add(anthropic.InputMessage.userBlocks(entry.value));
+      }
+    }
 
       final List<anthropic.ToolDefinition> anthropicTools = [];
       if (tools.isNotEmpty && config.useNativeToolCall) {
@@ -424,54 +438,63 @@ class LLMService {
       geminiTools.add(gemini.Tool(functionDeclarations: declarations));
     }
 
-    final List<gemini.Content> contentList = [];
+    final List<MapEntry<String, List<gemini.Part>>> grouped = [];
+
     for (final msg in messages) {
       if (msg.role == ChatRole.system) continue;
 
+      final String geminiRole;
+      final List<gemini.Part> parts = [];
+
       switch (msg.role) {
         case ChatRole.user:
-          contentList.add(
-            gemini.Content(
-              role: 'user',
-              parts: [gemini.Part.text(msg.content)],
-            ),
-          );
+          geminiRole = 'user';
+          if (msg.content.isNotEmpty) {
+            parts.add(gemini.Part.text(msg.content));
+          }
         case ChatRole.assistant:
+          geminiRole = 'model';
           if (msg.type == MessageType.toolCall) {
-            contentList.add(
-              gemini.Content(
-                role: 'model',
-                parts: [
-                  gemini.Part.functionCall(
-                    msg.toolName ?? '',
-                    args: msg.toolArguments,
-                  )
-                ],
+            parts.add(
+              gemini.Part.functionCall(
+                msg.toolName ?? '',
+                args: msg.toolArguments,
               ),
             );
           } else {
-            contentList.add(
-              gemini.Content(
-                role: 'model',
-                parts: [gemini.Part.text(msg.content)],
-              ),
-            );
+            if (msg.content.isNotEmpty) {
+              parts.add(gemini.Part.text(msg.content));
+            }
           }
         case ChatRole.tool:
-          contentList.add(
-            gemini.Content(
-              role: 'function',
-              parts: [
-                gemini.Part.functionResponse(
-                  msg.toolName ?? '',
-                  {'content': msg.content},
-                )
-              ],
+          geminiRole = 'function';
+          parts.add(
+            gemini.Part.functionResponse(
+              msg.toolName ?? '',
+              {'content': msg.content},
             ),
           );
         default:
-          break;
+          continue;
       }
+
+      if (parts.isEmpty) continue;
+
+      if (grouped.isNotEmpty && grouped.last.key == geminiRole) {
+        grouped.last.value.addAll(parts);
+      } else {
+        grouped.add(MapEntry(geminiRole, parts));
+      }
+    }
+
+    final List<gemini.Content> contentList = [];
+    for (final entry in grouped) {
+      contentList.add(
+        gemini.Content(
+          role: entry.key,
+          parts: entry.value,
+        ),
+      );
     }
 
     final response = await client.models.generateContent(
