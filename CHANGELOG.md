@@ -1,3 +1,12 @@
+## 0.0.10
+
+* Added user-cancellable prompt execution with a stop button in the chat input bar. When generation is active, the send button is replaced by a red stop-circle button; cancelling skips all remaining sub-prompts and tool iterations.
+* Fixed embedded model adapter unhandled-exception noise by replacing the `Completer`-based load synchronisation with a plain `Future<void>?` pattern.
+* Added context-size fallback retry logic for embedded models: when `llama_init_from_model` fails, the adapter retries with progressively smaller context sizes (full → half → 1024).
+* Improved error messaging in the embedded model picker to suggest alternative quantizations when context creation fails.
+* Fixed a Flutter framework assertion in the Agent Inspector panel where `ListTile` widgets inside a `DecoratedBox` with a background color lacked a `Material` ancestor.
+* Fixed `CreateChartPngTool` to accept string numeric values (e.g. `"42"`) from LLM tool-call arguments, preventing `type 'String' is not a subtype of type 'num'` crashes with embedded models.
+
 ## 0.0.9
 
 * Added embedded model support (discovery from HuggingFace, local GGUF loading, and on-device execution).

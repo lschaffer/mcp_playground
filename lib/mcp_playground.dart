@@ -50,7 +50,8 @@ class McpPlayground extends StatefulWidget {
   final String? locale;
 
   /// Optional builder to customize rendering of chat bubble message contents dynamically.
-  final Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
+  final Widget? Function(BuildContext context, ChatMessage message)?
+  messageContentBuilder;
 
   /// Whether to print clean console logs for key events.
   final bool enableLogging;
@@ -153,7 +154,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
   }
 
   Future<void> _checkAndInstallInitialLocalMcpServers() async {
-    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     if (!isDesktop) return;
 
     // Wait until controller is done loading from storage
@@ -168,7 +170,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
     final List<McpServerConfig> configsToRegister = [];
 
     for (final setup in localServersSetup) {
-      final existingIdx = _controller.servers.indexWhere((s) => s.name == setup.name);
+      final existingIdx = _controller.servers.indexWhere(
+        (s) => s.name == setup.name,
+      );
 
       McpServerConfig? config;
       bool needsInstall = false;
@@ -318,12 +322,14 @@ class _McpPlaygroundState extends State<McpPlayground> {
         .map((t) => t.toMCPTool())
         .toList();
     if (weatherTools.isNotEmpty) {
-      groups.add(_ToolsetGroup(
-        name: 'Weather',
-        description:
-            'Fetch weather forecasts using Open-Meteo (free, no API key). Provides current conditions, hourly and daily forecasts.',
-        tools: weatherTools,
-      ));
+      groups.add(
+        _ToolsetGroup(
+          name: 'Weather',
+          description:
+              'Fetch weather forecasts using Open-Meteo (free, no API key). Provides current conditions, hourly and daily forecasts.',
+          tools: weatherTools,
+        ),
+      );
     }
 
     final interactiveChartTools = _controller.localTools
@@ -331,11 +337,14 @@ class _McpPlaygroundState extends State<McpPlayground> {
         .map((t) => t.toMCPTool())
         .toList();
     if (interactiveChartTools.isNotEmpty) {
-      groups.add(_ToolsetGroup(
-        name: 'Chart generator (Interactive)',
-        description: 'Generate interactive JSON charts rendered via fl_chart.',
-        tools: interactiveChartTools,
-      ));
+      groups.add(
+        _ToolsetGroup(
+          name: 'Chart generator (Interactive)',
+          description:
+              'Generate interactive JSON charts rendered via fl_chart.',
+          tools: interactiveChartTools,
+        ),
+      );
     }
 
     final imageChartTools = _controller.localTools
@@ -343,11 +352,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
         .map((t) => t.toMCPTool())
         .toList();
     if (imageChartTools.isNotEmpty) {
-      groups.add(_ToolsetGroup(
-        name: 'Chart generator (PNG Image)',
-        description: 'Generate flat PNG image charts from canvas rendering.',
-        tools: imageChartTools,
-      ));
+      groups.add(
+        _ToolsetGroup(
+          name: 'Chart generator (PNG Image)',
+          description: 'Generate flat PNG image charts from canvas rendering.',
+          tools: imageChartTools,
+        ),
+      );
     }
 
     final sshTools = _controller.localTools
@@ -360,31 +371,39 @@ class _McpPlaygroundState extends State<McpPlayground> {
         .map((t) => t.toMCPTool())
         .toList();
     if (sshTools.isNotEmpty) {
-      groups.add(_ToolsetGroup(
-        name: 'SSH/SFTP',
-        description: 'Execute remote commands, list directories, read, and transfer files via SSH/SFTP.',
-        tools: sshTools,
-      ));
+      groups.add(
+        _ToolsetGroup(
+          name: 'SSH/SFTP',
+          description:
+              'Execute remote commands, list directories, read, and transfer files via SSH/SFTP.',
+          tools: sshTools,
+        ),
+      );
     }
 
     final otherTools = _controller.localTools
-        .where((t) =>
-            t.name != 'get_current_weather' &&
-            t.name != 'get_hourly_forecast' &&
-            t.name != 'get_daily_forecast' &&
-            t.name != 'geocode_weather_city' &&
-            t.name != 'create_chart_png' &&
-            t.name != 'chart2png' &&
-            !t.name.startsWith('ssh_') &&
-            !t.name.startsWith('sftp_'))
+        .where(
+          (t) =>
+              t.name != 'get_current_weather' &&
+              t.name != 'get_hourly_forecast' &&
+              t.name != 'get_daily_forecast' &&
+              t.name != 'geocode_weather_city' &&
+              t.name != 'create_chart_png' &&
+              t.name != 'chart2png' &&
+              !t.name.startsWith('ssh_') &&
+              !t.name.startsWith('sftp_'),
+        )
         .map((t) => t.toMCPTool())
         .toList();
     if (otherTools.isNotEmpty) {
-      groups.add(_ToolsetGroup(
-        name: 'Custom Local Tools',
-        description: 'Custom Dart-native tools registered with the playground.',
-        tools: otherTools,
-      ));
+      groups.add(
+        _ToolsetGroup(
+          name: 'Custom Local Tools',
+          description:
+              'Custom Dart-native tools registered with the playground.',
+          tools: otherTools,
+        ),
+      );
     }
 
     for (final client in _controller.mcpClients) {
@@ -436,7 +455,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
       }
       if (!mounted) return;
 
-      Widget buildSetupDialogContent(BuildContext ctx, StateSetter setDialogState) {
+      Widget buildSetupDialogContent(
+        BuildContext ctx,
+        StateSetter setDialogState,
+      ) {
         final theme = Theme.of(context);
         final groups = _getToolsetGroups();
 
@@ -475,11 +497,17 @@ class _McpPlaygroundState extends State<McpPlayground> {
         Widget buildGroupTile(_ToolsetGroup group) {
           final enabled = _controller.enabledToolNames;
           final groupTools = group.tools;
-          final activeCount = groupTools.where((t) => enabled.contains(t.name)).length;
+          final activeCount = groupTools
+              .where((t) => enabled.contains(t.name))
+              .length;
           final totalCount = groupTools.length;
 
-          final allEnabled = groupTools.isNotEmpty && groupTools.every((t) => enabled.contains(t.name));
-          final noneEnabled = groupTools.every((t) => !enabled.contains(t.name));
+          final allEnabled =
+              groupTools.isNotEmpty &&
+              groupTools.every((t) => enabled.contains(t.name));
+          final noneEnabled = groupTools.every(
+            (t) => !enabled.contains(t.name),
+          );
           bool? triStateVal;
           if (allEnabled) {
             triStateVal = true;
@@ -556,7 +584,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   onChanged: (val) {
                     final target = val ?? false;
                     setState(() {
-                      _controller.toggleToolsEnabled(groupTools.map((t) => t.name), target);
+                      _controller.toggleToolsEnabled(
+                        groupTools.map((t) => t.name),
+                        target,
+                      );
                     });
                   },
                 ),
@@ -585,11 +616,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
               ...external.map(buildGroupTile),
             ],
             if (installed.isNotEmpty) ...[
-              buildHeader(
-                'Installed MCP Servers',
-                Icons.hub,
-                Colors.teal,
-              ),
+              buildHeader('Installed MCP Servers', Icons.hub, Colors.teal),
               ...installed.map(buildGroupTile),
             ],
           ],
@@ -611,7 +638,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
-                      child: const Text('OK', style: TextStyle(color: Colors.white)),
+                      child: const Text(
+                        'OK',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ],
                 ),
@@ -643,7 +673,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
                       ),
                       title: const Text(
                         'Select Tools',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       content: SizedBox(
@@ -755,9 +788,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
         }
       }
     }
-    final nameCtrl = TextEditingController(
-      text: loadedSetup?.name ?? '',
-    );
+    final nameCtrl = TextEditingController(text: loadedSetup?.name ?? '');
     bool saveAsNew = _loadedSetupId == null;
 
     showDialog(
@@ -963,12 +994,15 @@ class _McpPlaygroundState extends State<McpPlayground> {
                           }
 
                           // Load tool selections
-                          _controller.updateEnabledTools(setup.enabledToolNames.toSet());
+                          _controller.updateEnabledTools(
+                            setup.enabledToolNames.toSet(),
+                          );
 
                           if (_playgroundStarted) {
                             _controller.systemPrompt = setup.systemPrompt;
                             _controller.chatMode = setup.chatMode;
-                            _controller.stopAfterToolCall = setup.stopAfterToolCall;
+                            _controller.stopAfterToolCall =
+                                setup.stopAfterToolCall;
                             _controller.customLlmConfig = setup.customLlmConfig;
                             _controller.clearChat();
                           }
@@ -1053,7 +1087,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
     }
 
     String filename = initialLlm.model.trim();
-    if (filename == 'ministral3-3b-instruct q4' || filename == 'ministral-3b-instruct q4') {
+    if (filename == 'ministral3-3b-instruct q4' ||
+        filename == 'ministral-3b-instruct q4') {
       filename = 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf';
     }
 
@@ -1061,7 +1096,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     // Check if the custom GGUF model is registered in our local custom models db
     final customs = await EmbeddedModelManager.instance.loadCustomModels();
-    EmbeddedGgufModel? model = customs.where((m) => m.filename == filename).firstOrNull;
+    EmbeddedGgufModel? model = customs
+        .where((m) => m.filename == filename)
+        .firstOrNull;
 
     if (model == null && _defaultModelMetadata.containsKey(filename)) {
       final meta = _defaultModelMetadata[filename]!;
@@ -1086,8 +1123,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
       description: '',
     );
 
-    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(filename);
-    final fileExists = await File(fullPath).exists() || (model.url.isNotEmpty && await File(model.url).exists());
+    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
+      filename,
+    );
+    final fileExists =
+        await File(fullPath).exists() ||
+        (model.url.isNotEmpty && await File(model.url).exists());
 
     if (fileExists) {
       final updated = initialLlm.copyWith(model: filename);
@@ -1116,7 +1157,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
     if (config.provider != LlmProvider.embedded) return true;
 
     String filename = config.model.trim();
-    if (filename == 'ministral3-3b-instruct q4' || filename == 'ministral-3b-instruct q4') {
+    if (filename == 'ministral3-3b-instruct q4' ||
+        filename == 'ministral-3b-instruct q4') {
       filename = 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf';
     }
 
@@ -1133,12 +1175,15 @@ class _McpPlaygroundState extends State<McpPlayground> {
     }
 
     final adapter = EmbeddedLlmAdapter.instance;
-    if (adapter.isLoaded && (adapter.loadedModelPath?.endsWith(filename) ?? false)) {
+    if (adapter.isLoaded &&
+        (adapter.loadedModelPath?.endsWith(filename) ?? false)) {
       return true;
     }
 
     final customs = await EmbeddedModelManager.instance.loadCustomModels();
-    EmbeddedGgufModel? model = customs.where((m) => m.filename == filename).firstOrNull;
+    EmbeddedGgufModel? model = customs
+        .where((m) => m.filename == filename)
+        .firstOrNull;
 
     if (model == null && _defaultModelMetadata.containsKey(filename)) {
       final meta = _defaultModelMetadata[filename]!;
@@ -1163,15 +1208,21 @@ class _McpPlaygroundState extends State<McpPlayground> {
       description: '',
     );
 
-    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(filename);
-    final fileExists = await File(fullPath).exists() || (model.url.isNotEmpty && await File(model.url).exists());
+    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
+      filename,
+    );
+    final fileExists =
+        await File(fullPath).exists() ||
+        (model.url.isNotEmpty && await File(model.url).exists());
 
     if (!fileExists) {
       if (model.url.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Model file "$filename" not found and no download URL is available.'),
+              content: Text(
+                'Model file "$filename" not found and no download URL is available.',
+              ),
               backgroundColor: Colors.orange,
             ),
           );
@@ -1239,16 +1290,22 @@ class _McpPlaygroundState extends State<McpPlayground> {
     try {
       final groups = _getToolsetGroups();
       final enabledGroups = groups.where((g) => _isToolsetEnabled(g)).toList();
-      
-      String promptText = 'Write a concise, professional system prompt (maximum 2-3 sentences) for an AI assistant. ';
+
+      String promptText =
+          'Write a concise, professional system prompt (maximum 2-3 sentences) for an AI assistant. ';
       if (enabledGroups.isNotEmpty) {
-        final toolDetails = enabledGroups.map((g) => '${g.name}: ${g.description}').join('\n');
-        promptText += 'The assistant is equipped with the following toolsets:\n$toolDetails\n\n';
-        promptText += 'Focus on how the assistant should behave, be direct, and optimize usage of these tools. ';
+        final toolDetails = enabledGroups
+            .map((g) => '${g.name}: ${g.description}')
+            .join('\n');
+        promptText +=
+            'The assistant is equipped with the following toolsets:\n$toolDetails\n\n';
+        promptText +=
+            'Focus on how the assistant should behave, be direct, and optimize usage of these tools. ';
       } else {
         promptText += 'Focus on being helpful, direct, and clear. ';
       }
-      promptText += 'Respond ONLY with the generated system prompt text, with no introduction, quotes, or explanations.';
+      promptText +=
+          'Respond ONLY with the generated system prompt text, with no introduction, quotes, or explanations.';
 
       final messages = [
         ChatMessage(
@@ -1263,7 +1320,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
         config: activeConfig,
         messages: messages,
         tools: const [],
-        systemPrompt: 'You are a prompt engineering expert. You output only the final requested prompt text with no markdown formatting or surrounding quotes.',
+        systemPrompt:
+            'You are a prompt engineering expert. You output only the final requested prompt text with no markdown formatting or surrounding quotes.',
       );
 
       if (response.text.isNotEmpty && mounted) {
@@ -1418,7 +1476,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             deleteIcon: const Icon(Icons.close, size: 14),
                             onDeleted: () {
                               setState(() {
-                                _controller.toggleToolsEnabled(group.tools.map((t) => t.name), false);
+                                _controller.toggleToolsEnabled(
+                                  group.tools.map((t) => t.name),
+                                  false,
+                                );
                               });
                             },
                             onPressed: () {
@@ -1512,7 +1573,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
                           )
                         : const Icon(Icons.auto_awesome_outlined, size: 20),
                     tooltip: 'Generate System Prompt',
-                    onPressed: _isGeneratingSystemPrompt ? null : _generateSystemPrompt,
+                    onPressed: _isGeneratingSystemPrompt
+                        ? null
+                        : _generateSystemPrompt,
                   ),
               ],
             ),
@@ -1671,10 +1734,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
             chatMode: _chatMode,
             availableToolGroups: _getToolsetGroups()
                 .where((g) => _isToolsetEnabled(g))
-                .map((g) => ToolGroup(
-                      name: g.name,
-                      toolNames: g.tools.map((t) => t.name).toList(),
-                    ))
+                .map(
+                  (g) => ToolGroup(
+                    name: g.name,
+                    toolNames: g.tools.map((t) => t.name).toList(),
+                  ),
+                )
                 .toList(),
             minLines: 2,
             maxLines: 8,
@@ -1888,10 +1953,12 @@ class _McpPlaygroundState extends State<McpPlayground> {
                 chatMode: _chatMode,
                 availableToolGroups: _getToolsetGroups()
                     .where((g) => _isToolsetEnabled(g))
-                    .map((g) => ToolGroup(
-                          name: g.name,
-                          toolNames: g.tools.map((t) => t.name).toList(),
-                        ))
+                    .map(
+                      (g) => ToolGroup(
+                        name: g.name,
+                        toolNames: g.tools.map((t) => t.name).toList(),
+                      ),
+                    )
                     .toList(),
                 minLines: 1,
                 maxLines: 6,
@@ -1903,20 +1970,34 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   IconButton(
                     icon: const Icon(Icons.attach_file_outlined),
                     tooltip: 'Attach Files / Images',
-                    onPressed: _pickAttachments,
+                    onPressed: _controller.isGenerating
+                        ? null
+                        : _pickAttachments,
                   ),
                   const Spacer(),
-                  IconButton(
-                    icon: Icon(
-                      Icons.send_rounded,
-                      color: showButton && _controller.activeLlmConfig.isConfigured
-                          ? theme.colorScheme.primary
-                          : Colors.grey,
+                  if (_controller.isGenerating)
+                    IconButton(
+                      icon: const Icon(Icons.stop_circle),
+                      iconSize: 24,
+                      tooltip: 'Stop execution',
+                      onPressed: () => _controller.cancelGeneration(),
+                      color: Colors.red,
+                    )
+                  else
+                    IconButton(
+                      icon: Icon(
+                        Icons.send_rounded,
+                        color:
+                            showButton &&
+                                _controller.activeLlmConfig.isConfigured
+                            ? theme.colorScheme.primary
+                            : Colors.grey,
+                      ),
+                      onPressed:
+                          showButton && _controller.activeLlmConfig.isConfigured
+                          ? _handleSend
+                          : null,
                     ),
-                    onPressed: showButton && _controller.activeLlmConfig.isConfigured
-                        ? _handleSend
-                        : null,
-                  ),
                 ],
               ),
             ],
@@ -2219,9 +2300,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
     final loadedSetupName = _loadedSetupId != null
         ? _controller.savedSetups
-            .cast<SavedPlaygroundSetup?>()
-            .firstWhere((s) => s?.id == _loadedSetupId, orElse: () => null)
-            ?.name
+              .cast<SavedPlaygroundSetup?>()
+              .firstWhere((s) => s?.id == _loadedSetupId, orElse: () => null)
+              ?.name
         : null;
 
     final l10n = _l10n;
@@ -2367,7 +2448,8 @@ const Map<String, Map<String, String>> _defaultModelMetadata = {
   'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf': {
     'repoId': 'lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF',
     'displayName': 'Ministral-3-3B-Instruct-2512-Q4_K_M',
-    'url': 'https://huggingface.co/lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF/resolve/main/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf',
+    'url':
+        'https://huggingface.co/lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF/resolve/main/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf',
     'size': '2140000000',
     'minRam': '4',
     'contextSize': '32768',
@@ -2379,10 +2461,12 @@ class _ModelDownloadProgressDialog extends StatefulWidget {
   const _ModelDownloadProgressDialog({required this.model});
 
   @override
-  State<_ModelDownloadProgressDialog> createState() => _ModelDownloadProgressDialogState();
+  State<_ModelDownloadProgressDialog> createState() =>
+      _ModelDownloadProgressDialogState();
 }
 
-class _ModelDownloadProgressDialogState extends State<_ModelDownloadProgressDialog> {
+class _ModelDownloadProgressDialogState
+    extends State<_ModelDownloadProgressDialog> {
   double _progress = 0.0;
   String _status = 'Starting download...';
   late final DownloadCancelToken _cancelToken;
@@ -2413,7 +2497,10 @@ class _ModelDownloadProgressDialogState extends State<_ModelDownloadProgressDial
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
         Navigator.pop(context, false);
       }
@@ -2451,7 +2538,8 @@ class _ModelLoadProgressDialog extends StatefulWidget {
   const _ModelLoadProgressDialog({required this.model});
 
   @override
-  State<_ModelLoadProgressDialog> createState() => _ModelLoadProgressDialogState();
+  State<_ModelLoadProgressDialog> createState() =>
+      _ModelLoadProgressDialogState();
 }
 
 class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
@@ -2466,10 +2554,14 @@ class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
 
   Future<void> _startLoad() async {
     try {
-      final gpuLayers = await EmbeddedModelManager.instance.getGpuLayers(widget.model.filename);
+      final gpuLayers = await EmbeddedModelManager.instance.getGpuLayers(
+        widget.model.filename,
+      );
       final fullPath = File(widget.model.url).existsSync()
           ? widget.model.url
-          : await EmbeddedModelManager.instance.fullPathForFilename(widget.model.filename);
+          : await EmbeddedModelManager.instance.fullPathForFilename(
+              widget.model.filename,
+            );
 
       await EmbeddedLlmAdapter.instance.initialize(
         fullPath,
@@ -2479,7 +2571,8 @@ class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
           if (mounted) {
             setState(() {
               _progress = p;
-              _status = 'Loading model into memory... ${(p * 100).toStringAsFixed(0)}%';
+              _status =
+                  'Loading model into memory... ${(p * 100).toStringAsFixed(0)}%';
             });
           }
         },
@@ -2488,7 +2581,10 @@ class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Load failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Load failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
         Navigator.pop(context, false);
       }
@@ -2511,5 +2607,3 @@ class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
     );
   }
 }
-
-

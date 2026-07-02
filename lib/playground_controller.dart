@@ -45,7 +45,10 @@ abstract class McpPlaygroundStorageDelegate {
   Future<Set<String>> loadInitializedClients() async => {};
 
   /// Saves cached tools list for a server ID.
-  Future<void> saveCachedServerTools(String serverId, List<MCPTool> tools) async {}
+  Future<void> saveCachedServerTools(
+    String serverId,
+    List<MCPTool> tools,
+  ) async {}
 
   /// Loads cached tools list for a server ID.
   Future<List<MCPTool>> loadCachedServerTools(String serverId) async => [];
@@ -169,7 +172,10 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
   }
 
   @override
-  Future<void> saveCachedServerTools(String serverId, List<MCPTool> tools) async {
+  Future<void> saveCachedServerTools(
+    String serverId,
+    List<MCPTool> tools,
+  ) async {
     final prefs = await _instance;
     final list = tools.map((t) => t.toJson()).toList();
     await prefs.setString('${_kCachedServerTools}_$serverId', jsonEncode(list));
@@ -182,7 +188,9 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = jsonDecode(raw) as List;
-      return list.map((item) => MCPTool.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .map((item) => MCPTool.fromJson(item as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
@@ -223,15 +231,17 @@ class PlaygroundController extends ChangeNotifier {
 
   bool _loading = false;
   bool _generating = false;
+  bool _cancelRequested = false;
   String? _errorMessage;
   bool _stopAfterToolCall = false;
   final Set<String> _enabledToolNames = {};
   final Set<String> _initializedClientIds = {};
   final bool enableLogging;
   bool _isInitializing = false;
-  
+
   /// Optional builder to customize rendering of chat bubble message contents dynamically.
-  Widget? Function(BuildContext context, ChatMessage message)? messageContentBuilder;
+  Widget? Function(BuildContext context, ChatMessage message)?
+  messageContentBuilder;
 
   // ── Tool loop interception ──────────────────────────────────────
   /// Maximum number of tool call iterations per user request.
@@ -293,6 +303,16 @@ class PlaygroundController extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isGenerating => _generating;
   String? get errorMessage => _errorMessage;
+
+  /// Requests cancellation of the currently executing prompt/sub-prompt chain.
+  /// Safe to call from any thread.
+  void cancelGeneration() {
+    if (_generating) {
+      _cancelRequested = true;
+      notifyListeners();
+    }
+  }
+
   McpPlaygroundStorageDelegate get storage => _storage;
 
   bool get stopAfterToolCall => _stopAfterToolCall;
@@ -415,7 +435,10 @@ class PlaygroundController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addServer(McpServerConfig server, {bool autoSelectTools = true}) async {
+  Future<void> addServer(
+    McpServerConfig server, {
+    bool autoSelectTools = true,
+  }) async {
     _servers.add(server);
     await _storage.saveServers(_servers);
     if (!autoSelectTools) {
@@ -454,16 +477,15 @@ class PlaygroundController extends ChangeNotifier {
   }
 
   Future<void> _syncMcpServers() async {
-    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
-    final activeServers = _servers
-        .where((s) {
-          if (!s.enabled) return false;
-          if (s.isLocal) {
-            return isDesktop;
-          }
-          return s.url.trim().isNotEmpty;
-        })
-        .toList();
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    final activeServers = _servers.where((s) {
+      if (!s.enabled) return false;
+      if (s.isLocal) {
+        return isDesktop;
+      }
+      return s.url.trim().isNotEmpty;
+    }).toList();
 
     final List<MCPClientDef> nextClients = [];
     final List<MCPClientDef> clientsToConnect = [];
@@ -489,13 +511,19 @@ class PlaygroundController extends ChangeNotifier {
         );
       }
 
-      final clientDef = MCPClientDef(name: s.id, client: client, displayName: s.name);
+      final clientDef = MCPClientDef(
+        name: s.id,
+        client: client,
+        displayName: s.name,
+      );
       if (cachedTools.isNotEmpty) {
         clientDef.cachedTools = cachedTools;
       }
       nextClients.add(clientDef);
 
-      final hasSelectedTool = cachedTools.any((t) => _enabledToolNames.contains(t.name));
+      final hasSelectedTool = cachedTools.any(
+        (t) => _enabledToolNames.contains(t.name),
+      );
       final shouldConnect = hasSelectedTool;
 
       if (shouldConnect) {
@@ -521,7 +549,8 @@ class PlaygroundController extends ChangeNotifier {
 
     bool changed = false;
     for (final clientDef in _mcpManager.clients) {
-      if (clientDef.isConnected && !_initializedClientIds.contains(clientDef.name)) {
+      if (clientDef.isConnected &&
+          !_initializedClientIds.contains(clientDef.name)) {
         _initializedClientIds.add(clientDef.name);
         if (!_isInitializing) {
           for (final tool in clientDef.availableTools) {
@@ -557,9 +586,7 @@ class PlaygroundController extends ChangeNotifier {
 
     if (undiscovered.isEmpty) return;
 
-    await Future.wait(
-      undiscovered.map((c) => _connectClientAndCacheTools(c)),
-    );
+    await Future.wait(undiscovered.map((c) => _connectClientAndCacheTools(c)));
 
     bool changed = false;
     for (final clientDef in undiscovered) {
@@ -675,11 +702,15 @@ class PlaygroundController extends ChangeNotifier {
     }
 
     // 3. Fallback: regex search and replace base64 PNG blocks or general base64 blocks
-    final base64Regex = RegExp(r'(iVBORw0KGgo[a-zA-Z0-9+/=\s\r\n]{50,})|([A-Za-z0-9+/]{100,}[=]{0,2})');
+    final base64Regex = RegExp(
+      r'(iVBORw0KGgo[a-zA-Z0-9+/=\s\r\n]{50,})|([A-Za-z0-9+/]{100,}[=]{0,2})',
+    );
     result = result.replaceAll(base64Regex, '[Binary/Image Data]');
 
     // Also strip data:image/... or data:application/... URI patterns
-    final dataUriRegex = RegExp(r'data:[^/]+/[^;]+;base64,[a-zA-Z0-9+/=\s\r\n]+');
+    final dataUriRegex = RegExp(
+      r'data:[^/]+/[^;]+;base64,[a-zA-Z0-9+/=\s\r\n]+',
+    );
     result = result.replaceAll(dataUriRegex, '[Binary/Image Data]');
 
     return result.trim();
@@ -729,6 +760,7 @@ class PlaygroundController extends ChangeNotifier {
     }
 
     _errorMessage = null;
+    _cancelRequested = false;
     _generating = true;
     notifyListeners();
 
@@ -742,6 +774,21 @@ class PlaygroundController extends ChangeNotifier {
       String? lastTaskResult;
 
       for (int i = 0; i < subPrompts.length; i++) {
+        // ── Cancellation check between sub-prompts ──────────────────────────
+        if (_cancelRequested) {
+          _messages.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              content:
+                  'Execution cancelled by user. Remaining sub-prompts skipped.',
+              role: ChatRole.system,
+              type: MessageType.log,
+              timestamp: DateTime.now(),
+            ),
+          );
+          notifyListeners();
+          break;
+        }
         final step = subPrompts[i];
         String prompt = step.text;
 
@@ -760,7 +807,8 @@ class PlaygroundController extends ChangeNotifier {
         }
 
         // Determine if next step needs tool result
-        final nextNeedsToolResult = (i + 1 < subPrompts.length) &&
+        final nextNeedsToolResult =
+            (i + 1 < subPrompts.length) &&
             (subPrompts[i + 1].text.contains(r'${tool_result}') ||
                 subPrompts[i + 1].text.contains('[tool_result]'));
 
@@ -792,7 +840,8 @@ class PlaygroundController extends ChangeNotifier {
                   'Present final answers directly. Present code and logs inside clean formatting.';
 
         // Inject short instructions into the system prompt to guide tool execution and loop prevention
-        systemPrompt += '\n\n'
+        systemPrompt +=
+            '\n\n'
             'Tool execution rules:\n'
             '- Each tool execution result is returned in a JSON structure: {"tool": "name", "id": "unique_id", "tool_executed": true, "tool_result": ...}.\n'
             '- Once a tool has been successfully executed (tool_executed is true), you must NEVER call that tool with the same "id" or parameters again.\n'
@@ -816,7 +865,9 @@ class PlaygroundController extends ChangeNotifier {
           return _enabledToolNames.contains(t.name);
         }).toList();
 
-        if (stepHasTools && activeStepTools.isNotEmpty && !activeLlmConfig.useNativeToolCall) {
+        if (stepHasTools &&
+            activeStepTools.isNotEmpty &&
+            !activeLlmConfig.useNativeToolCall) {
           systemPrompt += '\n\nAvailable Tools:\n';
           for (final tool in activeStepTools) {
             systemPrompt += '- Tool Name: ${tool.name}\n';
@@ -824,7 +875,8 @@ class PlaygroundController extends ChangeNotifier {
               systemPrompt += '  Description: ${tool.description}\n';
             }
             if (tool.inputSchema != null) {
-              systemPrompt += '  Input Schema: ${jsonEncode(tool.inputSchema)}\n';
+              systemPrompt +=
+                  '  Input Schema: ${jsonEncode(tool.inputSchema)}\n';
             }
           }
         }
@@ -834,6 +886,21 @@ class PlaygroundController extends ChangeNotifier {
         bool continueLoop = true;
 
         while (continueLoop) {
+          // ── Cancellation check between tool iterations ───────────────────
+          if (_cancelRequested) {
+            _messages.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                content: 'Execution cancelled by user.',
+                role: ChatRole.system,
+                type: MessageType.log,
+                timestamp: DateTime.now(),
+              ),
+            );
+            notifyListeners();
+            break;
+          }
+
           if (_toolIterationCount >= _maxToolIterations) {
             final limitMsg = ChatMessage(
               id: _uuid.v4(),
@@ -880,6 +947,21 @@ class PlaygroundController extends ChangeNotifier {
             systemPrompt: systemPrompt,
           );
 
+          // ── Cancellation check after LLM returns ──────────────────────
+          if (_cancelRequested) {
+            _messages.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                content: 'Execution cancelled by user.',
+                role: ChatRole.system,
+                type: MessageType.log,
+                timestamp: DateTime.now(),
+              ),
+            );
+            notifyListeners();
+            break;
+          }
+
           if (response.toolCalls.isEmpty) {
             if (response.text.isNotEmpty) {
               final textMsg = ChatMessage(
@@ -895,12 +977,16 @@ class PlaygroundController extends ChangeNotifier {
             continueLoop = false;
           } else {
             final call = response.toolCalls.first;
-            _log('Assistant Tool Call: ${call.name} with arguments: ${jsonEncode(call.arguments)}');
+            _log(
+              'Assistant Tool Call: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
+            );
 
             _toolIterationCount++;
             final toolSignature = '${call.name}|${jsonEncode(call.arguments)}';
             final hasDuplicateId = _executedToolCallIds.contains(call.id);
-            final hasDuplicateSignature = _executedToolCallSignatures.contains(toolSignature);
+            final hasDuplicateSignature = _executedToolCallSignatures.contains(
+              toolSignature,
+            );
 
             if (hasDuplicateId || hasDuplicateSignature) {
               String previousResult = _messages
@@ -966,7 +1052,8 @@ class PlaygroundController extends ChangeNotifier {
 
             final callMsg = ChatMessage(
               id: call.id,
-              content: 'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
+              content:
+                  'Calling tool: ${call.name} with arguments: ${jsonEncode(call.arguments)}',
               role: ChatRole.assistant,
               type: MessageType.toolCall,
               toolName: call.name,
@@ -979,7 +1066,9 @@ class PlaygroundController extends ChangeNotifier {
 
             _log('Executing Tool: ${call.name}');
             MCPToolResult result;
-            final localMatch = _localTools.where((t) => t.name == call.name).toList();
+            final localMatch = _localTools
+                .where((t) => t.name == call.name)
+                .toList();
 
             if (localMatch.isNotEmpty) {
               result = await localMatch.first.execute(call.arguments);
@@ -1000,10 +1089,14 @@ class PlaygroundController extends ChangeNotifier {
                 'tool': call.name,
                 'id': call.id,
                 'tool_executed': true,
-                'tool_result': responseContentText.isNotEmpty ? responseContentText : 'Executed.',
+                'tool_result': responseContentText.isNotEmpty
+                    ? responseContentText
+                    : 'Executed.',
               });
             } else {
-              finalContent = responseContentText.isNotEmpty ? responseContentText : 'Executed.';
+              finalContent = responseContentText.isNotEmpty
+                  ? responseContentText
+                  : 'Executed.';
             }
 
             final resMsg = ChatMessage(
@@ -1019,7 +1112,10 @@ class PlaygroundController extends ChangeNotifier {
             stepNewMsgs.add(resMsg);
             notifyListeners();
 
-            final bool shouldStop = step.stopAfterToolCall || _stopAfterToolCall || nextNeedsToolResult;
+            final bool shouldStop =
+                step.stopAfterToolCall ||
+                _stopAfterToolCall ||
+                nextNeedsToolResult;
             if (shouldStop) {
               continueLoop = false;
             }
@@ -1041,9 +1137,14 @@ class PlaygroundController extends ChangeNotifier {
               return m.content;
             })
             .join('\n\n');
-        
+
         final assistantTexts = stepNewMsgs
-            .where((m) => m.role == ChatRole.assistant && m.content.isNotEmpty && m.type != MessageType.toolCall)
+            .where(
+              (m) =>
+                  m.role == ChatRole.assistant &&
+                  m.content.isNotEmpty &&
+                  m.type != MessageType.toolCall,
+            )
             .map((m) => m.content)
             .join('\n\n');
 
@@ -1055,19 +1156,28 @@ class PlaygroundController extends ChangeNotifier {
           lastTaskResult = stepOutput;
           if (nextNeedsToolResult) {
             lastToolOutput = stepOutput;
-            _log('Captured step output for \${tool_result}/\${task_result} (${stepOutput.length} chars)');
+            _log(
+              'Captured step output for \${tool_result}/\${task_result} (${stepOutput.length} chars)',
+            );
           } else {
-            _log('Captured step output for \${task_result} (${stepOutput.length} chars)');
+            _log(
+              'Captured step output for \${task_result} (${stepOutput.length} chars)',
+            );
           }
         }
 
-        final bool globalStopActive = _stopAfterToolCall && !nextNeedsToolResult;
+        final bool globalStopActive =
+            _stopAfterToolCall && !nextNeedsToolResult;
         if (globalStopActive) {
-          final nextWantsResult = (i + 1 < subPrompts.length) &&
+          final nextWantsResult =
+              (i + 1 < subPrompts.length) &&
               (subPrompts[i + 1].text.contains(r'${task_result}') ||
                   subPrompts[i + 1].text.contains('[task_result]'));
-          if (!nextWantsResult && stepNewMsgs.any((m) => m.role == ChatRole.tool)) {
-            _log('[stopAfterToolCall] Breaking sub-prompt chain after step ${i + 1} — no result consumer in next step');
+          if (!nextWantsResult &&
+              stepNewMsgs.any((m) => m.role == ChatRole.tool)) {
+            _log(
+              '[stopAfterToolCall] Breaking sub-prompt chain after step ${i + 1} — no result consumer in next step',
+            );
             break;
           }
         }

@@ -40,8 +40,6 @@ const String _baseUrl = 'https://api.open-meteo.com/v1';
 const String _geocodeUrl = 'https://geocoding-api.open-meteo.com/v1';
 
 class GetCurrentWeatherTool extends McpLocalTool {
-
-
   @override
   String get name => 'get_current_weather';
 
@@ -175,8 +173,6 @@ class GetCurrentWeatherTool extends McpLocalTool {
 }
 
 class GetHourlyForecastTool extends McpLocalTool {
-
-
   @override
   String get name => 'get_hourly_forecast';
 
@@ -311,8 +307,6 @@ class GetHourlyForecastTool extends McpLocalTool {
 }
 
 class GetDailyForecastTool extends McpLocalTool {
-
-
   @override
   String get name => 'get_daily_forecast';
 
@@ -448,8 +442,6 @@ class GetDailyForecastTool extends McpLocalTool {
 }
 
 class GeocodeWeatherCityTool extends McpLocalTool {
-
-
   @override
   String get name => 'geocode_weather_city';
 
@@ -1075,6 +1067,14 @@ class SshRemoveDirectoryTool extends SshBaseLocalTool {
   }
 }
 
+/// Safely converts a dynamic value to [double], accepting both [num] and
+/// [String] inputs (e.g. "42" → 42.0). Returns `0.0` for unrecognised types.
+double _toDouble(dynamic v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? 0.0;
+  return 0.0;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 3. Chart Generation Tool (JSON-based, rendered via fl_chart in host)
 // ═══════════════════════════════════════════════════════════════
@@ -1115,10 +1115,13 @@ class CreateChartPngTool extends McpLocalTool {
   @override
   Future<MCPToolResult> execute(Map<String, dynamic> arguments) async {
     try {
-      final chartType = (arguments['chart_type'] as String? ?? 'line').trim().toLowerCase();
+      final chartType = (arguments['chart_type'] as String? ?? 'line')
+          .trim()
+          .toLowerCase();
       final title = (arguments['title'] as String?)?.trim() ?? 'Chart';
       final labels = (arguments['labels'] as List?)?.cast<String>() ?? [];
-      final data = (arguments['data'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [];
+      final data =
+          (arguments['data'] as List?)?.map((e) => _toDouble(e)).toList() ?? [];
 
       final jsonMap = {
         'chart_type': chartType,
@@ -1128,17 +1131,14 @@ class CreateChartPngTool extends McpLocalTool {
       };
 
       return MCPToolResult(
-        content: [
-          MCPContent(
-            type: 'text',
-            text: jsonEncode(jsonMap),
-          ),
-        ],
+        content: [MCPContent(type: 'text', text: jsonEncode(jsonMap))],
         isError: false,
       );
     } catch (e) {
       return MCPToolResult(
-        content: [MCPContent(type: 'text', text: 'Chart generation failed: $e')],
+        content: [
+          MCPContent(type: 'text', text: 'Chart generation failed: $e'),
+        ],
         isError: true,
       );
     }

@@ -14,11 +14,13 @@ class EmbeddedLlmAdapter {
 
   // LlamaBackend registers ggml backends globally. Keep a single instance
   // for the entire app lifetime on native platforms. Guard on Web to avoid FFI failures.
-  static final LlamaBackend _backend = kIsWeb ? null as dynamic : LlamaBackend();
+  static final LlamaBackend _backend = kIsWeb
+      ? null as dynamic
+      : LlamaBackend();
 
   LlamaEngine? _engine;
   String? _loadedModelPath;
-  Completer<void>? _loadingCompleter;
+  Future<void>? _loadingFuture;
 
   bool get isLoaded => !kIsWeb && _engine?.isReady == true;
   String? get loadedModelPath => _loadedModelPath;
@@ -27,42 +29,91 @@ class EmbeddedLlmAdapter {
 
   static const int _mobileMaxContextSize = 4096;
 
-  Future<void> initialize(String modelPath, {int gpuLayers = 0, int contextSize = 4096, void Function(double progress)? onProgress}) async {
+  Future<void> initialize(
+    String modelPath, {
+    int gpuLayers = 0,
+    int contextSize = 4096,
+    void Function(double progress)? onProgress,
+  }) async {
     if (kIsWeb) {
       throw UnsupportedError('Embedded models are not supported in web mode.');
     }
 
-    final effectiveContextSize = _shouldTruncate ? contextSize.clamp(1, _mobileMaxContextSize) : contextSize;
+    final effectiveContextSize = _shouldTruncate
+        ? contextSize.clamp(1, _mobileMaxContextSize)
+        : contextSize;
     if (_loadedModelPath == modelPath && isLoaded) return;
 
-    if (_loadingCompleter != null) {
-      await _loadingCompleter!.future;
+    // Wait for any in-progress load to settle, then re-check.
+    final previousLoad = _loadingFuture;
+    if (previousLoad != null) {
+      try {
+        await previousLoad;
+      } catch (_) {
+        // Previous load failed — proceed with this attempt.
+      }
       if (_loadedModelPath == modelPath && isLoaded) return;
     }
 
-    final completer = Completer<void>();
-    _loadingCompleter = completer;
+    // Capture this load operation so concurrent callers can await it.
+    final future = _performLoad(
+      modelPath,
+      effectiveContextSize,
+      gpuLayers,
+      onProgress,
+    );
+    _loadingFuture = future;
     try {
-      await _unloadCurrentModel();
-      onProgress?.call(0.0);
-
-      _engine ??= LlamaEngine(_backend);
-      await _engine!.loadModel(
-        modelPath,
-        modelParams: ModelParams(contextSize: effectiveContextSize, gpuLayers: gpuLayers),
-      );
-
-      _loadedModelPath = modelPath;
-      onProgress?.call(1.0);
-      completer.complete();
-    } catch (e) {
-      _engine = null;
-      _loadedModelPath = null;
-      completer.completeError(e);
-      rethrow;
+      await future;
     } finally {
-      _loadingCompleter = null;
+      if (_loadingFuture == future) {
+        _loadingFuture = null;
+      }
     }
+  }
+
+  Future<void> _performLoad(
+    String modelPath,
+    int contextSize,
+    int gpuLayers,
+    void Function(double progress)? onProgress,
+  ) async {
+    await _unloadCurrentModel();
+    onProgress?.call(0.0);
+
+    _engine ??= LlamaEngine(_backend);
+
+    // Attempt load with the requested context size. If context creation
+    // fails (common with newer GGUF models that have architecture quirks),
+    // retry with progressively smaller context sizes before giving up.
+    final sizesToTry = <int>[contextSize];
+    if (contextSize > 2048) sizesToTry.add(contextSize ~/ 2);
+    if (contextSize > 1024) sizesToTry.add(1024);
+
+    Object? lastError;
+    for (final size in sizesToTry) {
+      try {
+        await _engine!.loadModel(
+          modelPath,
+          modelParams: ModelParams(contextSize: size, gpuLayers: gpuLayers),
+        );
+        _loadedModelPath = modelPath;
+        onProgress?.call(1.0);
+        return; // Success
+      } on LlamaModelException catch (e) {
+        lastError = e;
+        // Only retry if this is a context-related failure.
+        if (!e.toString().contains('create context')) rethrow;
+        // Clean up the failed attempt before retrying.
+        if (_engine != null && _engine!.isReady) {
+          await _engine!.unloadModel();
+        }
+        _engine = null;
+      }
+    }
+
+    // All attempts failed – rethrow the last error.
+    throw lastError!;
   }
 
   Future<void> _unloadCurrentModel() async {
@@ -121,7 +172,9 @@ class EmbeddedLlmAdapter {
 
     final session = ChatSession(engine);
 
-    final systemMsg = messages.lastWhereOrNull((m) => m.role == ChatRole.system);
+    final systemMsg = messages.lastWhereOrNull(
+      (m) => m.role == ChatRole.system,
+    );
     if (systemMsg != null) {
       session.systemPrompt = systemMsg.content;
     }
@@ -132,12 +185,17 @@ class EmbeddedLlmAdapter {
     }
 
     final lastIsToolResult = nonSystem.last.role == ChatRole.tool;
-    final historySlice = lastIsToolResult ? nonSystem : nonSystem.take(nonSystem.length - 1).toList();
+    final historySlice = lastIsToolResult
+        ? nonSystem
+        : nonSystem.take(nonSystem.length - 1).toList();
     _populateHistory(session, historySlice);
 
     if (!lastIsToolResult) {
-      if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
-        session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '));
+      if (session.history.isNotEmpty &&
+          session.history.last.role == LlamaChatRole.tool) {
+        session.addMessage(
+          LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '),
+        );
       }
     }
 
@@ -155,11 +213,23 @@ class EmbeddedLlmAdapter {
       }
     }
 
-    final toolDefs = availableTools != null && availableTools.isNotEmpty ? _convertTools(availableTools) : null;
-    final params = GenerationParams(maxTokens: maxTokens, temp: temperature, topK: topK, topP: topP, penalty: penalty);
+    final toolDefs = availableTools != null && availableTools.isNotEmpty
+        ? _convertTools(availableTools)
+        : null;
+    final params = GenerationParams(
+      maxTokens: maxTokens,
+      temp: temperature,
+      topK: topK,
+      topP: topP,
+      penalty: penalty,
+    );
 
     String fullText = '';
-    await for (final chunk in session.create(inputParts, tools: toolDefs, params: params)) {
+    await for (final chunk in session.create(
+      inputParts,
+      tools: toolDefs,
+      params: params,
+    )) {
       if (chunk.choices.isNotEmpty) {
         final content = chunk.choices.first.delta.content;
         if (content != null && content.isNotEmpty) {
@@ -173,7 +243,13 @@ class EmbeddedLlmAdapter {
     var toolCalls =
         lastHistoryMsg?.parts
             .whereType<LlamaToolCallContent>()
-            .map((tc) => LLMToolCall(id: tc.id ?? tc.name, name: tc.name, arguments: tc.arguments))
+            .map(
+              (tc) => LLMToolCall(
+                id: tc.id ?? tc.name,
+                name: tc.name,
+                arguments: tc.arguments,
+              ),
+            )
             .toList() ??
         [];
 
@@ -185,10 +261,7 @@ class EmbeddedLlmAdapter {
       }
     }
 
-    return LLMResponse(
-      text: fullText,
-      toolCalls: toolCalls,
-    );
+    return LLMResponse(text: fullText, toolCalls: toolCalls);
   }
 
   // ── History builder ──────────────────────────────────────────────────────────
@@ -199,10 +272,18 @@ class EmbeddedLlmAdapter {
       final msg = messages[i];
 
       if (msg.role == ChatRole.user) {
-        if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
-          session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '));
+        if (session.history.isNotEmpty &&
+            session.history.last.role == LlamaChatRole.tool) {
+          session.addMessage(
+            LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '),
+          );
         }
-        session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.user, text: msg.content));
+        session.addMessage(
+          LlamaChatMessage.fromText(
+            role: LlamaChatRole.user,
+            text: msg.content,
+          ),
+        );
         i++;
       } else if (msg.role == ChatRole.assistant) {
         int j = i + 1;
@@ -223,29 +304,55 @@ class EmbeddedLlmAdapter {
                 ),
               )
               .toList();
-          session.addMessage(LlamaChatMessage.withContent(role: LlamaChatRole.assistant, content: parts));
+          session.addMessage(
+            LlamaChatMessage.withContent(
+              role: LlamaChatRole.assistant,
+              content: parts,
+            ),
+          );
 
           for (final tr in toolResults) {
-            final resultText = _truncateToolResult(_extractToolResultText(tr.toolResult?.content, tr.content));
+            final resultText = _truncateToolResult(
+              _extractToolResultText(tr.toolResult?.content, tr.content),
+            );
             session.addMessage(
               LlamaChatMessage.withContent(
                 role: LlamaChatRole.tool,
-                content: [LlamaToolResultContent(id: tr.id, name: tr.toolName ?? 'tool', result: resultText)],
+                content: [
+                  LlamaToolResultContent(
+                    id: tr.id,
+                    name: tr.toolName ?? 'tool',
+                    result: resultText,
+                  ),
+                ],
               ),
             );
           }
 
           i = j;
         } else {
-          session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: msg.content));
+          session.addMessage(
+            LlamaChatMessage.fromText(
+              role: LlamaChatRole.assistant,
+              text: msg.content,
+            ),
+          );
           i++;
         }
       } else if (msg.role == ChatRole.tool) {
-        final resultText = _truncateToolResult(_extractToolResultText(msg.toolResult?.content, msg.content));
+        final resultText = _truncateToolResult(
+          _extractToolResultText(msg.toolResult?.content, msg.content),
+        );
         session.addMessage(
           LlamaChatMessage.withContent(
             role: LlamaChatRole.tool,
-            content: [LlamaToolResultContent(id: msg.id, name: msg.toolName ?? 'tool', result: resultText)],
+            content: [
+              LlamaToolResultContent(
+                id: msg.id,
+                name: msg.toolName ?? 'tool',
+                result: resultText,
+              ),
+            ],
           ),
         );
         i++;
@@ -257,7 +364,8 @@ class EmbeddedLlmAdapter {
 
   // ── Tool result truncation ───────────────────────────────────────────────────
 
-  static bool get _shouldTruncate => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  static bool get _shouldTruncate =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   String _extractToolResultText(List<MCPContent>? contents, String fallback) {
     if (contents == null || contents.isEmpty) return fallback;
@@ -267,7 +375,10 @@ class EmbeddedLlmAdapter {
 
     for (final c in contents) {
       final mime = c.mimeType?.toLowerCase() ?? '';
-      final isImage = c.type == 'image' || mime.startsWith('image/') || mime == 'application/octet-stream';
+      final isImage =
+          c.type == 'image' ||
+          mime.startsWith('image/') ||
+          mime == 'application/octet-stream';
 
       if (isImage || (c.data != null && c.data!.isNotEmpty)) {
         skippedImages++;
@@ -326,7 +437,8 @@ class EmbeddedLlmAdapter {
 
   static bool _looksLikeBase64Blob(String text) {
     if (text.length < 256) return false;
-    final hasWhitespace = text.contains(' ') || text.contains('\n') || text.contains('\t');
+    final hasWhitespace =
+        text.contains(' ') || text.contains('\n') || text.contains('\t');
     if (hasWhitespace) return false;
     return RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(text);
   }
@@ -335,7 +447,9 @@ class EmbeddedLlmAdapter {
 
   String _truncateToolResult(String text) {
     final payload = _extractTextualPayload(text);
-    if (!_shouldTruncate || payload.length <= _maxToolResultChars) return payload;
+    if (!_shouldTruncate || payload.length <= _maxToolResultChars) {
+      return payload;
+    }
     return '[TOOL OUTPUT BLOCKED — the output was ${payload.length} characters, '
         'which exceeds the on-device limit of $_maxToolResultChars characters. '
         'The result has NOT been sent to the model to prevent memory issues and hallucinations. '
@@ -389,7 +503,9 @@ class EmbeddedLlmAdapter {
 
       if (payload == null) return null;
 
-      final inner = payload.containsKey('tool_call') ? payload['tool_call'] : payload;
+      final inner = payload.containsKey('tool_call')
+          ? payload['tool_call']
+          : payload;
       if (inner is! Map) return null;
       final toolCall = Map<String, dynamic>.from(inner);
 
@@ -455,9 +571,13 @@ class EmbeddedLlmAdapter {
 
   List<ToolParam> _schemaToParams(Map<String, dynamic>? schema) {
     final rawProps = schema?['properties'];
-    final props = rawProps == null ? <String, dynamic>{} : (rawProps as Map).cast<String, dynamic>();
+    final props = rawProps == null
+        ? <String, dynamic>{}
+        : (rawProps as Map).cast<String, dynamic>();
     final rawRequired = schema?['required'];
-    final required = rawRequired == null ? <String>[] : (rawRequired as List).cast<String>();
+    final required = rawRequired == null
+        ? <String>[]
+        : (rawRequired as List).cast<String>();
 
     return props.entries.map((entry) {
       final def = (entry.value as Map).cast<String, dynamic>();
@@ -467,19 +587,45 @@ class EmbeddedLlmAdapter {
 
       switch (type) {
         case 'integer':
-          return ToolParam.integer(entry.key, description: desc, required: isRequired);
+          return ToolParam.integer(
+            entry.key,
+            description: desc,
+            required: isRequired,
+          );
         case 'number':
-          return ToolParam.number(entry.key, description: desc, required: isRequired);
+          return ToolParam.number(
+            entry.key,
+            description: desc,
+            required: isRequired,
+          );
         case 'boolean':
-          return ToolParam.boolean(entry.key, description: desc, required: isRequired);
+          return ToolParam.boolean(
+            entry.key,
+            description: desc,
+            required: isRequired,
+          );
         case 'array':
-          return ToolParam.array(entry.key, itemType: ToolParam.string('item'), description: desc, required: isRequired);
+          return ToolParam.array(
+            entry.key,
+            itemType: ToolParam.string('item'),
+            description: desc,
+            required: isRequired,
+          );
         default:
           final enumVals = (def['enum'] as List?)?.cast<String>();
           if (enumVals != null && enumVals.isNotEmpty) {
-            return ToolParam.enumType(entry.key, values: enumVals, description: desc, required: isRequired);
+            return ToolParam.enumType(
+              entry.key,
+              values: enumVals,
+              description: desc,
+              required: isRequired,
+            );
           }
-          return ToolParam.string(entry.key, description: desc, required: isRequired);
+          return ToolParam.string(
+            entry.key,
+            description: desc,
+            required: isRequired,
+          );
       }
     }).toList();
   }

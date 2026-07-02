@@ -22,7 +22,8 @@ class EmbeddedModelPickerWidget extends StatefulWidget {
   });
 
   @override
-  State<EmbeddedModelPickerWidget> createState() => _EmbeddedModelPickerWidgetState();
+  State<EmbeddedModelPickerWidget> createState() =>
+      _EmbeddedModelPickerWidgetState();
 }
 
 class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
@@ -70,11 +71,14 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
     setState(() => _loading = true);
     try {
       final customs = await EmbeddedModelManager.instance.loadCustomModels();
-      final downloaded = await EmbeddedModelManager.instance.listDownloadedFilenames();
+      final downloaded = await EmbeddedModelManager.instance
+          .listDownloadedFilenames();
 
       final gpuMap = <String, int>{};
       for (final filename in downloaded) {
-        gpuMap[filename] = await EmbeddedModelManager.instance.getGpuLayers(filename);
+        gpuMap[filename] = await EmbeddedModelManager.instance.getGpuLayers(
+          filename,
+        );
       }
 
       bool gpuSupported = false;
@@ -114,16 +118,29 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
     }
     for (final filename in _downloadedFilenames) {
       if (seen.add(filename)) {
-        final name = filename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '').replaceAll(RegExp(r'[-_]'), ' ');
+        final name = filename
+            .replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '')
+            .replaceAll(RegExp(r'[-_]'), ' ');
         // If it maps to a custom model, keep the url/display info
-        final custom = _customModels.firstWhere((c) => c.filename == filename, orElse: () => const EmbeddedGgufModel(id: '', displayName: '', filename: '', url: '', description: ''));
+        final custom = _customModels.firstWhere(
+          (c) => c.filename == filename,
+          orElse: () => const EmbeddedGgufModel(
+            id: '',
+            displayName: '',
+            filename: '',
+            url: '',
+            description: '',
+          ),
+        );
         combined.add(
           EmbeddedGgufModel(
             id: filename,
             displayName: custom.id.isNotEmpty ? custom.displayName : name,
             filename: filename,
             url: custom.id.isNotEmpty ? custom.url : '',
-            description: custom.id.isNotEmpty ? custom.description : 'Downloaded model.',
+            description: custom.id.isNotEmpty
+                ? custom.description
+                : 'Downloaded model.',
           ),
         );
       }
@@ -188,10 +205,16 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
         title: const Text('Delete model?'),
         content: Text('Remove "${model.displayName}" from device storage?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.get('cancel'))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.get('cancel')),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.get('clear'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(
+              l10n.get('clear'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ),
         ],
       ),
@@ -210,12 +233,20 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove all models?'),
-        content: const Text('This will delete all downloaded GGUF files from device storage.'),
+        content: const Text(
+          'This will delete all downloaded GGUF files from device storage.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.get('cancel'))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.get('cancel')),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.get('removeAll'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(
+              l10n.get('removeAll'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ),
         ],
       ),
@@ -252,16 +283,19 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       if (path == null) return;
 
       setState(() => _loading = true);
-      
+
       final filename = file.name;
       String finalUrl = '';
-      
-      final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
-      
+
+      final isDesktop =
+          !kIsWeb &&
+          (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
       if (isDesktop) {
         finalUrl = path;
       } else {
-        final modelsDir = await EmbeddedModelManager.instance.getModelsDirectory();
+        final modelsDir = await EmbeddedModelManager.instance
+            .getModelsDirectory();
         final destFile = File('${modelsDir.path}/$filename');
         if (!destFile.existsSync()) {
           final sourceFile = File(path);
@@ -272,7 +306,9 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
 
       final model = EmbeddedGgufModel(
         id: 'disk_${DateTime.now().millisecondsSinceEpoch}',
-        displayName: filename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '').replaceAll(RegExp(r'[-_]'), ' '),
+        displayName: filename
+            .replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '')
+            .replaceAll(RegExp(r'[-_]'), ' '),
         filename: filename,
         url: finalUrl,
         description: 'Local model added from disk.',
@@ -281,13 +317,15 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
 
       await EmbeddedModelManager.instance.addCustomModel(model);
       await _refresh();
-      
+
       widget.onFilenameSelected(model.filename);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Added local model "${model.displayName}" from disk.'),
+            content: Text(
+              'Added local model "${model.displayName}" from disk.',
+            ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -341,8 +379,14 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             'if your device supports it.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Load anyway')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Load anyway'),
+            ),
           ],
         ),
       );
@@ -358,8 +402,10 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       // If GGUF is linked directly from disk (e.g. on desktop), the model.url represents the original path
       final fullPath = File(model.url).existsSync()
           ? model.url
-          : await EmbeddedModelManager.instance.fullPathForFilename(model.filename);
-          
+          : await EmbeddedModelManager.instance.fullPathForFilename(
+              model.filename,
+            );
+
       await EmbeddedLlmAdapter.instance.initialize(
         fullPath,
         gpuLayers: gpuLayers,
@@ -371,11 +417,23 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
     } catch (e) {
       if (mounted) {
         final l10n = McpPlaygroundLocalizations.of(context);
+        final errorStr = e.toString();
+        final isContextFailure =
+            errorStr.contains('create context') ||
+            errorStr.contains('Failed to create context');
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${l10n.get('loadModelFailed')}: $e'),
+            content: Text(
+              isContextFailure
+                  ? '${l10n.get('loadModelFailed')}: The model architecture may not be compatible with '
+                        'the current llama.cpp version. Try a different quantization '
+                        '(e.g. Q8_0 or Q6_K) or a different model. Error: $errorStr'
+                  : '${l10n.get('loadModelFailed')}: $errorStr',
+            ),
             backgroundColor: Theme.of(context).colorScheme.error,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 8),
           ),
         );
       }
@@ -394,14 +452,14 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
     final theme = Theme.of(context);
     final l10n = McpPlaygroundLocalizations.of(context);
     final appLoadedPath = EmbeddedLlmAdapter.instance.loadedModelPath;
-    
+
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(child: CircularProgressIndicator()),
       );
     }
-    
+
     final models = _allModels;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,7 +469,9 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             Expanded(
               child: Text(
                 l10n.get('onDeviceModels'),
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             TextButton.icon(
@@ -434,15 +494,26 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.explore_outlined, size: 20, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.explore_outlined,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: 8),
-                      Text('Find a model to get started', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        'Find a model to get started',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Use "Discover popular" to browse HuggingFace GGUF repos, "Add GGUF URL" to paste a link, or "Add GGUF from Disk" to select a local file.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -451,8 +522,12 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
         else
           ...models.map((model) {
             // Check if the GGUF file is in models/ folder, or if it points to a valid file on disk (direct path)
-            final isDownloaded = _downloadedFilenames.contains(model.filename) || File(model.url).existsSync();
-            final isAppLoaded = EmbeddedLlmAdapter.instance.isLoaded && (appLoadedPath?.endsWith(model.filename) ?? false);
+            final isDownloaded =
+                _downloadedFilenames.contains(model.filename) ||
+                File(model.url).existsSync();
+            final isAppLoaded =
+                EmbeddedLlmAdapter.instance.isLoaded &&
+                (appLoadedPath?.endsWith(model.filename) ?? false);
             final isAppLoading = _appLoadingFilename == model.filename;
             final isCustom = _customModels.any((m) => m.id == model.id);
             return _ModelTile(
@@ -461,22 +536,32 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
               isSelected: _selectedFilename == model.filename,
               isDownloaded: isDownloaded,
               downloadProgress: _downloadProgress[model.filename],
-              onSelect: isDownloaded ? () {
-                setState(() => _selectedFilename = model.filename);
-                widget.onFilenameSelected(model.filename);
-              } : null,
+              onSelect: isDownloaded
+                  ? () {
+                      setState(() => _selectedFilename = model.filename);
+                      widget.onFilenameSelected(model.filename);
+                    }
+                  : null,
               onDownload: () => _startDownload(model),
               onCancelDownload: () => _cancelDownload(model.filename),
               onDelete: isDownloaded ? () => _deleteModel(model) : null,
-              onRemoveFromList: (isCustom && !isDownloaded) ? () => _removeFromList(model) : null,
+              onRemoveFromList: (isCustom && !isDownloaded)
+                  ? () => _removeFromList(model)
+                  : null,
               isAppLoaded: isAppLoaded,
               isAppLoading: isAppLoading,
               appLoadProgress: isAppLoading ? _appLoadProgress : null,
               gpuLayers: _gpuLayersMap[model.filename] ?? 0,
-              onGpuLayersChanged: isDownloaded ? (v) => _setGpuLayers(model.filename, v) : null,
+              onGpuLayersChanged: isDownloaded
+                  ? (v) => _setGpuLayers(model.filename, v)
+                  : null,
               gpuSupported: _gpuSupported ?? true,
               vramFreeBytes: _vramFreeBytes,
-              onLoadToApp: (isDownloaded && !isAppLoaded && !isAppLoading && _appLoadingFilename == null)
+              onLoadToApp:
+                  (isDownloaded &&
+                      !isAppLoaded &&
+                      !isAppLoading &&
+                      _appLoadingFilename == null)
                   ? () => _loadModelIntoApp(model)
                   : null,
               onUnloadFromApp: isAppLoaded ? _unloadModelFromApp : null,
@@ -505,9 +590,20 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             if (_downloadedFilenames.isNotEmpty)
               OutlinedButton.icon(
                 onPressed: _deleteAllModels,
-                icon: Icon(Icons.delete_sweep_outlined, size: 18, color: theme.colorScheme.error),
-                label: Text(l10n.get('removeAll'), style: TextStyle(color: theme.colorScheme.error)),
-                style: OutlinedButton.styleFrom(side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5))),
+                icon: Icon(
+                  Icons.delete_sweep_outlined,
+                  size: 18,
+                  color: theme.colorScheme.error,
+                ),
+                label: Text(
+                  l10n.get('removeAll'),
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: theme.colorScheme.error.withValues(alpha: 0.5),
+                  ),
+                ),
               ),
           ],
         ),
@@ -517,12 +613,19 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             padding: const EdgeInsets.only(top: 8),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: theme.colorScheme.error),
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: theme.colorScheme.error,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     l10n.get('selectDownloadedModelHint'),
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error, fontWeight: FontWeight.w500),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
@@ -533,7 +636,9 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               l10n.get('downloadModelHint'),
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
       ],
@@ -589,7 +694,7 @@ class _ModelTile extends StatelessWidget {
     final l10n = McpPlaygroundLocalizations.of(context);
     final isDownloading = downloadProgress != null;
     final selectedButMissing = isSelected && !isDownloaded;
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: (isSelected && isDownloaded)
@@ -618,8 +723,12 @@ class _ModelTile extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: Icon(
-                        isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                        color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
                         size: 20,
                       ),
                     )
@@ -630,11 +739,16 @@ class _ModelTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(model.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          model.displayName,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(height: 2),
                         Text(
                           model.description,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -643,13 +757,35 @@ class _ModelTile extends StatelessWidget {
                           spacing: 6,
                           runSpacing: 4,
                           children: [
-                            if (model.sizeLabel.isNotEmpty) _Chip(label: model.sizeLabel, icon: Icons.sd_card_outlined),
-                            _Chip(label: '≥ ${model.minRamGb} GB RAM', icon: Icons.memory_outlined),
-                            _Chip(label: '${(model.contextSize / 1024).round()}K ctx', icon: Icons.chat_bubble_outline),
+                            if (model.sizeLabel.isNotEmpty)
+                              _Chip(
+                                label: model.sizeLabel,
+                                icon: Icons.sd_card_outlined,
+                              ),
+                            _Chip(
+                              label: '≥ ${model.minRamGb} GB RAM',
+                              icon: Icons.memory_outlined,
+                            ),
+                            _Chip(
+                              label:
+                                  '${(model.contextSize / 1024).round()}K ctx',
+                              icon: Icons.chat_bubble_outline,
+                            ),
                             if (model.supportsToolCalling)
-                              _Chip(label: 'Tool calling', icon: Icons.build_outlined, color: Colors.green),
-                            if (!gpuSupported && model.sizeBytes > _EmbeddedModelPickerWidgetState._cpuSizeWarnBytes)
-                              _Chip(label: 'May not load on CPU', icon: Icons.warning_amber_rounded, color: theme.colorScheme.error),
+                              _Chip(
+                                label: 'Tool calling',
+                                icon: Icons.build_outlined,
+                                color: Colors.green,
+                              ),
+                            if (!gpuSupported &&
+                                model.sizeBytes >
+                                    _EmbeddedModelPickerWidgetState
+                                        ._cpuSizeWarnBytes)
+                              _Chip(
+                                label: 'May not load on CPU',
+                                icon: Icons.warning_amber_rounded,
+                                color: theme.colorScheme.error,
+                              ),
                           ],
                         ),
                       ],
@@ -660,21 +796,39 @@ class _ModelTile extends StatelessWidget {
                     children: [
                       if (!isDownloaded && !isDownloading) ...[
                         if (model.url.isNotEmpty)
-                          IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Download model', onPressed: onDownload),
+                          IconButton(
+                            icon: const Icon(Icons.download_outlined),
+                            tooltip: 'Download model',
+                            onPressed: onDownload,
+                          ),
                         if (onRemoveFromList != null)
                           IconButton(
-                            icon: Icon(Icons.close, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                            icon: Icon(
+                              Icons.close,
+                              size: 18,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                             tooltip: 'Remove from list',
                             onPressed: onRemoveFromList,
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
                           ),
                       ] else if (isDownloading)
-                        IconButton(icon: const Icon(Icons.cancel_outlined), tooltip: 'Cancel download', onPressed: onCancelDownload)
+                        IconButton(
+                          icon: const Icon(Icons.cancel_outlined),
+                          tooltip: 'Cancel download',
+                          onPressed: onCancelDownload,
+                        )
                       else if (onDelete != null)
                         IconButton(
-                          icon: Icon(Icons.delete_outline, color: theme.colorScheme.onSurfaceVariant),
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                           tooltip: 'Delete model',
                           onPressed: onDelete,
                         ),
@@ -691,20 +845,30 @@ class _ModelTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  downloadProgress != null ? 'Downloading… ${(downloadProgress! * 100).toStringAsFixed(0)}%' : 'Starting…',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
+                  downloadProgress != null
+                      ? 'Downloading… ${(downloadProgress! * 100).toStringAsFixed(0)}%'
+                      : 'Starting…',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ],
               if (selectedButMissing) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, size: 14, color: theme.colorScheme.error),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 14,
+                      color: theme.colorScheme.error,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'Selected in settings, but not downloaded yet. Download is required before use.',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
                       ),
                     ),
                   ],
@@ -715,9 +879,18 @@ class _ModelTile extends StatelessWidget {
                 if (onGpuLayersChanged != null) ...[
                   Row(
                     children: [
-                      Icon(Icons.memory_outlined, size: 13, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.memory_outlined,
+                        size: 13,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 4),
-                      Text('GPU layers:', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                      Text(
+                        'GPU layers:',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -725,9 +898,21 @@ class _ModelTile extends StatelessWidget {
                     width: double.infinity,
                     child: SegmentedButton<int>(
                       segments: const [
-                        ButtonSegment(value: 0, label: Text('CPU'), icon: Icon(Icons.computer, size: 13)),
-                        ButtonSegment(value: 32, label: Text('Partial'), icon: Icon(Icons.auto_fix_high, size: 13)),
-                        ButtonSegment(value: 99, label: Text('Full GPU'), icon: Icon(Icons.bolt, size: 13)),
+                        ButtonSegment(
+                          value: 0,
+                          label: Text('CPU'),
+                          icon: Icon(Icons.computer, size: 13),
+                        ),
+                        ButtonSegment(
+                          value: 32,
+                          label: Text('Partial'),
+                          icon: Icon(Icons.auto_fix_high, size: 13),
+                        ),
+                        ButtonSegment(
+                          value: 99,
+                          label: Text('Full GPU'),
+                          icon: Icon(Icons.bolt, size: 13),
+                        ),
                       ],
                       selected: {
                         gpuLayers == 0
@@ -743,7 +928,9 @@ class _ModelTile extends StatelessWidget {
                               if (v != 0 && !gpuSupported) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('GPU acceleration is not supported on this device — using CPU only.'),
+                                    content: Text(
+                                      'GPU acceleration is not supported on this device — using CPU only.',
+                                    ),
                                     duration: Duration(seconds: 3),
                                   ),
                                 );
@@ -754,7 +941,9 @@ class _ModelTile extends StatelessWidget {
                             },
                       style: ButtonStyle(
                         visualDensity: VisualDensity.compact,
-                        textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 11)),
+                        textStyle: WidgetStateProperty.all(
+                          const TextStyle(fontSize: 11),
+                        ),
                         iconSize: WidgetStateProperty.all(13),
                       ),
                     ),
@@ -765,28 +954,44 @@ class _ModelTile extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded, size: 14, color: theme.colorScheme.error),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: theme.colorScheme.error,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               'GPU not supported on this device — model will run on CPU.',
-                              style: TextStyle(fontSize: 11, color: theme.colorScheme.error),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.error,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     )
-                  else if (gpuLayers > 0 && vramFreeBytes > 0 && model.sizeBytes > vramFreeBytes)
+                  else if (gpuLayers > 0 &&
+                      vramFreeBytes > 0 &&
+                      model.sizeBytes > vramFreeBytes)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded, size: 14, color: theme.colorScheme.error),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: theme.colorScheme.error,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               'Model (~${(model.sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB) may exceed available GPU memory (~${(vramFreeBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB free). Consider CPU or Partial GPU.',
-                              style: TextStyle(fontSize: 11, color: theme.colorScheme.error),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.colorScheme.error,
+                              ),
                             ),
                           ),
                         ],
@@ -797,20 +1002,33 @@ class _ModelTile extends StatelessWidget {
                   children: [
                     if (isAppLoaded) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.4),
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.memory, size: 12, color: Colors.green),
+                            const Icon(
+                              Icons.memory,
+                              size: 12,
+                              color: Colors.green,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               l10n.get('modelLoadedInApp'),
-                              style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -823,8 +1041,15 @@ class _ModelTile extends StatelessWidget {
                           label: Text(l10n.get('unloadModel')),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            side: BorderSide(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
                             textStyle: const TextStyle(fontSize: 12),
                           ),
                         ),
@@ -834,16 +1059,24 @@ class _ModelTile extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             LinearProgressIndicator(
-                              value: (appLoadProgress == null || appLoadProgress == 0.0) ? null : appLoadProgress,
-                              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                              value:
+                                  (appLoadProgress == null ||
+                                      appLoadProgress == 0.0)
+                                  ? null
+                                  : appLoadProgress,
+                              backgroundColor:
+                                  theme.colorScheme.surfaceContainerHighest,
                               color: theme.colorScheme.primary,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              (appLoadProgress != null && appLoadProgress! > 0.0)
+                              (appLoadProgress != null &&
+                                      appLoadProgress! > 0.0)
                                   ? '${l10n.get('loadingModelIntoApp')} (${(appLoadProgress! * 100).round()}%)'
                                   : l10n.get('loadingModelIntoApp'),
-                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                           ],
                         ),
@@ -853,10 +1086,17 @@ class _ModelTile extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: onLoadToApp,
                         icon: const Icon(Icons.memory, size: 14),
-                        label: Text(l10n.get('loadingModelIntoApp').replaceAll(RegExp(r'\.\.\.$'), '')),
+                        label: Text(
+                          l10n
+                              .get('loadingModelIntoApp')
+                              .replaceAll(RegExp(r'\.\.\.$'), ''),
+                        ),
                         style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           backgroundColor: theme.colorScheme.primary,
                           textStyle: const TextStyle(fontSize: 12),
                         ),
@@ -898,7 +1138,11 @@ class _Chip extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             label,
-            style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 10,
+              color: c,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
