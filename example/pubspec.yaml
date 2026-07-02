@@ -14,7 +14,7 @@ dependencies:
   mcp_playground_flutter:
     path: ../
   mcp_playground_shared_tools:
-    path: ../shared_tools
+    path: shared_tools
   http: ^1.2.1
   dartssh2: ^2.18.0
   mime: ^2.0.0
