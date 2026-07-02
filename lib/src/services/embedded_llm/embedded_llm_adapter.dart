@@ -137,7 +137,7 @@ class EmbeddedLlmAdapter {
 
     if (!lastIsToolResult) {
       if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
-        session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ''));
+        session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '));
       }
     }
 
@@ -200,7 +200,7 @@ class EmbeddedLlmAdapter {
 
       if (msg.role == ChatRole.user) {
         if (session.history.isNotEmpty && session.history.last.role == LlamaChatRole.tool) {
-          session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ''));
+          session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '));
         }
         session.addMessage(LlamaChatMessage.fromText(role: LlamaChatRole.user, text: msg.content));
         i++;
