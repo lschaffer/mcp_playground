@@ -34,6 +34,7 @@ class EmbeddedLlmAdapter {
     int contextSize = 4096,
     void Function(double progress)? onProgress,
   }) async {
+    LlamaEngine.configureLogging(level: LlamaLogLevel.debug);
     final effectiveContextSize = _shouldTruncate
         ? contextSize.clamp(1, _mobileMaxContextSize)
         : contextSize;
@@ -76,8 +77,6 @@ class EmbeddedLlmAdapter {
     await _unloadCurrentModel();
     onProgress?.call(0.0);
 
-    _engine ??= LlamaEngine(_backend);
-
     // Attempt load with the requested context size. If context creation
     // fails (common with newer GGUF models that have architecture quirks),
     // retry with progressively smaller context sizes before giving up.
@@ -87,11 +86,22 @@ class EmbeddedLlmAdapter {
 
     Object? lastError;
     for (final size in sizesToTry) {
+      _engine ??= LlamaEngine(_backend);
       try {
-        await _engine!.loadModel(
-          modelPath,
-          modelParams: ModelParams(contextSize: size, gpuLayers: gpuLayers),
-        );
+        final params = ModelParams(contextSize: size, gpuLayers: gpuLayers);
+        if (_backend.supportsUrlLoading &&
+            (modelPath.startsWith('http://') || modelPath.startsWith('https://'))) {
+          await _engine!.loadModelFromUrl(
+            modelPath,
+            modelParams: params,
+            onProgress: onProgress,
+          );
+        } else {
+          await _engine!.loadModel(
+            modelPath,
+            modelParams: params,
+          );
+        }
         _loadedModelPath = modelPath;
         onProgress?.call(1.0);
         return; // Success

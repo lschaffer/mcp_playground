@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ import 'src/widgets/initial_mcp_install_progress_dialog.dart';
 import 'src/services/embedded_llm/embedded_model.dart';
 import 'src/services/embedded_llm/embedded_model_manager.dart';
 import 'src/services/embedded_llm/embedded_llm_adapter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 String _mimeFromExtension(String name) => mimeFromExtension(name);
 
@@ -1028,6 +1030,266 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
+  Future<void> _exportSetups() async {
+    final setups = _controller.savedSetups;
+    if (setups.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No saved setups to export.')),
+        );
+      }
+      return;
+    }
+
+    final exportList = setups
+        .map(
+          (s) => {
+            'name': s.name,
+            'systemPrompt': s.systemPrompt,
+            'prompt': s.initialPrompt,
+            'toolNames': s.enabledToolNames,
+            'chatMode': s.chatMode,
+            'stopAfterToolCall': s.stopAfterToolCall,
+          },
+        )
+        .toList();
+
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(exportList);
+
+    final now = DateTime.now();
+    final timestamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final defaultFileName = 'playground_agents_$timestamp.json';
+
+    try {
+      final result = await FilePicker.saveFile(
+        dialogTitle: 'Export Playground Setups',
+        fileName: defaultFileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: utf8.encode(jsonStr),
+      );
+
+      if (result != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Exported ${exportList.length} setup(s) to $defaultFileName.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importSetups() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        dialogTitle: 'Import Playground Setups',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to read file.')));
+        return;
+      }
+
+      final jsonStr = utf8.decode(bytes);
+      final decoded = jsonDecode(jsonStr);
+
+      if (decoded is! List) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Invalid file format: expected a JSON array.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+
+      // Gather all currently available tool names
+      final availableToolNames = _getToolsetGroups()
+          .expand((g) => g.tools)
+          .map((t) => t.name)
+          .toSet();
+
+      // Build a set of existing setup names (case-insensitive) to skip duplicates
+      final existingNames = _controller.savedSetups
+          .map((s) => s.name.trim().toLowerCase())
+          .toSet();
+
+      final imported = <SavedPlaygroundSetup>[];
+      final allMissingTools = <String>{};
+      final skippedNames = <String>[];
+      int skippedCount = 0;
+
+      for (final item in decoded) {
+        if (item is! Map<String, dynamic>) continue;
+
+        final name = (item['name'] as String?)?.trim() ?? 'Imported Setup';
+
+        // Skip if a setup with the same name already exists
+        if (existingNames.contains(name.toLowerCase())) {
+          skippedNames.add(name);
+          skippedCount++;
+          continue;
+        }
+        final systemPrompt = (item['systemPrompt'] as String?) ?? '';
+        final prompt = (item['prompt'] as String?) ?? '';
+        final toolNames =
+            (item['toolNames'] as List<dynamic>?)
+                ?.map((t) => t.toString())
+                .toList() ??
+            <String>[];
+        final chatMode = item['chatMode'] as bool? ?? false;
+        final stopAfterToolCall = item['stopAfterToolCall'] as bool? ?? false;
+
+        // Filter to only available tools, track missing ones
+        final validTools = <String>[];
+        for (final t in toolNames) {
+          if (availableToolNames.contains(t)) {
+            validTools.add(t);
+          } else {
+            allMissingTools.add(t);
+          }
+        }
+
+        imported.add(
+          SavedPlaygroundSetup(
+            id: const Uuid().v4(),
+            name: '$name (imported)',
+            createdAt: DateTime.now(),
+            systemPrompt: systemPrompt,
+            initialPrompt: prompt,
+            enabledToolNames: validTools,
+            chatMode: chatMode,
+            stopAfterToolCall: stopAfterToolCall,
+            useCustomLlm: false,
+          ),
+        );
+      }
+
+      if (imported.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No valid setups found in the file.')),
+          );
+        }
+        return;
+      }
+
+      // Save all imported setups
+      for (final setup in imported) {
+        await _controller.saveSetup(setup);
+      }
+
+      if (mounted) {
+        final msg = StringBuffer('Imported ${imported.length} setup(s).');
+        if (skippedCount > 0) {
+          msg.write(' Skipped $skippedCount duplicate(s).');
+        }
+        if (allMissingTools.isNotEmpty) {
+          // Show a warning dialog for missing tools
+          _showImportMissingToolsWarning(
+            allMissingTools.toList()..sort(),
+            imported.length,
+          );
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(msg.toString())));
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showImportMissingToolsWarning(
+    List<String> missingTools,
+    int importedCount,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Tools Not Available')),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Imported $importedCount setup(s). The following ${missingTools.length} tool(s) are not available in this environment and were removed:',
+              ),
+              const SizedBox(height: 12),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: missingTools.length,
+                  itemBuilder: (_, i) => ListTile(
+                    dense: true,
+                    leading: Icon(
+                      Icons.block,
+                      size: 16,
+                      color: Colors.red.shade400,
+                    ),
+                    title: Text(
+                      missingTools[i],
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _applyLlmDefaults() {
     final defaults = _controller.llmConfig;
     setState(() {
@@ -1123,12 +1385,16 @@ class _McpPlaygroundState extends State<McpPlayground> {
       description: '',
     );
 
-    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
-      filename,
-    );
-    final fileExists =
-        await File(fullPath).exists() ||
-        (model.url.isNotEmpty && await File(model.url).exists());
+    final bool fileExists;
+    if (kIsWeb) {
+      fileExists = true;
+    } else {
+      final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
+        filename,
+      );
+      fileExists = await File(fullPath).exists() ||
+          (model.url.isNotEmpty && await File(model.url).exists());
+    }
 
     if (fileExists) {
       final updated = initialLlm.copyWith(model: filename);
@@ -1208,15 +1474,23 @@ class _McpPlaygroundState extends State<McpPlayground> {
       description: '',
     );
 
-    final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
-      filename,
-    );
-    final fileExists =
-        await File(fullPath).exists() ||
-        (model.url.isNotEmpty && await File(model.url).exists());
+    final modelToLoad = model;
+
+    final bool fileExists;
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('web_downloaded_models') ?? [];
+      fileExists = list.contains(filename);
+    } else {
+      final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
+        filename,
+      );
+      fileExists = await File(fullPath).exists() ||
+          (modelToLoad.url.isNotEmpty && await File(modelToLoad.url).exists());
+    }
 
     if (!fileExists) {
-      if (model.url.isEmpty) {
+      if (modelToLoad.url.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1234,7 +1508,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       final downloaded = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => _ModelDownloadProgressDialog(model: model!),
+        builder: (ctx) => _ModelDownloadProgressDialog(model: modelToLoad),
       );
 
       if (downloaded != true) {
@@ -1246,7 +1520,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
     final loaded = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _ModelLoadProgressDialog(model: model!),
+      builder: (ctx) => _ModelLoadProgressDialog(model: modelToLoad),
     );
 
     return loaded ?? false;
@@ -1527,25 +1801,6 @@ class _McpPlaygroundState extends State<McpPlayground> {
                     onChanged: (v) {
                       setState(() {
                         _chatMode = v ?? false;
-                      });
-                    },
-                  ),
-                  CheckboxListTile(
-                    value: _stopAfterToolCall,
-                    title: const Text(
-                      'Stop after tool call',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'Execute the tool call but don\'t send the result back to the LLM.',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                    onChanged: (v) {
-                      setState(() {
-                        _stopAfterToolCall = v ?? false;
                       });
                     },
                   ),
@@ -2191,6 +2446,16 @@ class _McpPlaygroundState extends State<McpPlayground> {
             tooltip: l10n.get('saveTooltip'),
             onPressed: _showSaveSetupDialog,
           ),
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: 'Export setups as JSON',
+            onPressed: _exportSetups,
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: 'Import setups from JSON',
+            onPressed: _importSetups,
+          ),
         ],
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
         IconButton(
@@ -2224,6 +2489,10 @@ class _McpPlaygroundState extends State<McpPlayground> {
             _showLoadSetupsDialog();
           } else if (val == 'save') {
             _showSaveSetupDialog();
+          } else if (val == 'export') {
+            _exportSetups();
+          } else if (val == 'import') {
+            _importSetups();
           } else if (val == 'catalog') {
             RegisteredToolsDialog.show(context, _controller);
           } else if (val == 'inspector') {
@@ -2259,6 +2528,26 @@ class _McpPlaygroundState extends State<McpPlayground> {
                   const Icon(Icons.bookmark_add_outlined, size: 20),
                   const SizedBox(width: 12),
                   Text(l10n.get('saveSetup')),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'export',
+              child: Row(
+                children: [
+                  const Icon(Icons.file_upload_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('exportJson')),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'import',
+              child: Row(
+                children: [
+                  const Icon(Icons.file_download_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text(l10n.get('importJson')),
                 ],
               ),
             ),
@@ -2480,19 +2769,44 @@ class _ModelDownloadProgressDialogState
 
   Future<void> _startDownload() async {
     try {
-      await EmbeddedModelManager.instance.downloadModel(
-        url: widget.model.url,
-        filename: widget.model.filename,
-        cancelToken: _cancelToken,
-        onProgress: (p) {
-          if (mounted) {
-            setState(() {
-              _progress = p;
-              _status = 'Downloading... ${(p * 100).toStringAsFixed(1)}%';
-            });
-          }
-        },
-      );
+      if (kIsWeb) {
+        final gpuLayers = await EmbeddedModelManager.instance.getGpuLayers(
+          widget.model.filename,
+        );
+        await EmbeddedLlmAdapter.instance.initialize(
+          widget.model.url,
+          gpuLayers: gpuLayers,
+          contextSize: widget.model.contextSize,
+          onProgress: (p) {
+            if (mounted) {
+              setState(() {
+                _progress = p;
+                _status = 'Downloading... ${(p * 100).toStringAsFixed(1)}%';
+              });
+            }
+          },
+        );
+        final prefs = await SharedPreferences.getInstance();
+        final list = prefs.getStringList('web_downloaded_models') ?? [];
+        if (!list.contains(widget.model.filename)) {
+          list.add(widget.model.filename);
+          await prefs.setStringList('web_downloaded_models', list);
+        }
+      } else {
+        await EmbeddedModelManager.instance.downloadModel(
+          url: widget.model.url,
+          filename: widget.model.filename,
+          cancelToken: _cancelToken,
+          onProgress: (p) {
+            if (mounted) {
+              setState(() {
+                _progress = p;
+                _status = 'Downloading... ${(p * 100).toStringAsFixed(1)}%';
+              });
+            }
+          },
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -2557,11 +2871,16 @@ class _ModelLoadProgressDialogState extends State<_ModelLoadProgressDialog> {
       final gpuLayers = await EmbeddedModelManager.instance.getGpuLayers(
         widget.model.filename,
       );
-      final fullPath = File(widget.model.url).existsSync()
-          ? widget.model.url
-          : await EmbeddedModelManager.instance.fullPathForFilename(
-              widget.model.filename,
-            );
+      final String fullPath;
+      if (kIsWeb) {
+        fullPath = widget.model.url;
+      } else {
+        fullPath = File(widget.model.url).existsSync()
+            ? widget.model.url
+            : await EmbeddedModelManager.instance.fullPathForFilename(
+                widget.model.filename,
+              );
+      }
 
       await EmbeddedLlmAdapter.instance.initialize(
         fullPath,

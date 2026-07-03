@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../services/embedded_llm/embedded_model.dart';
 import '../../services/embedded_llm/embedded_model_manager.dart';
 import '../../services/embedded_llm/embedded_llm_adapter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../mcp_localizations.dart';
 import 'add_gguf_dialog.dart';
 import 'hf_discover_dialog.dart';
@@ -151,6 +152,49 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
   Future<void> _startDownload(EmbeddedGgufModel model) async {
     if (_downloadProgress.containsKey(model.filename)) return;
 
+    if (kIsWeb) {
+      setState(() {
+        _downloadProgress[model.filename] = 0.0;
+      });
+      try {
+        final gpuLayers = _gpuLayersMap[model.filename] ?? 0;
+        await EmbeddedLlmAdapter.instance.initialize(
+          model.url,
+          gpuLayers: gpuLayers,
+          contextSize: model.contextSize,
+          onProgress: (p) {
+            if (mounted) setState(() => _downloadProgress[model.filename] = p);
+          },
+        );
+        final prefs = await SharedPreferences.getInstance();
+        final list = prefs.getStringList('web_downloaded_models') ?? [];
+        if (!list.contains(model.filename)) {
+          list.add(model.filename);
+          await prefs.setStringList('web_downloaded_models', list);
+        }
+        await _refresh();
+        if (mounted) widget.onFilenameSelected(model.filename);
+      } catch (e) {
+        if (mounted) {
+          final l10n = McpPlaygroundLocalizations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${l10n.get('loadModelFailed')}: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _downloadProgress.remove(model.filename);
+          });
+        }
+      }
+      return;
+    }
+
     final token = DownloadCancelToken();
     setState(() {
       _cancelTokens[model.filename] = token;
@@ -203,7 +247,9 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete model?'),
-        content: Text('Remove "${model.displayName}" from device storage?'),
+        content: Text(kIsWeb
+            ? 'Remove "${model.displayName}" from your list?'
+            : 'Remove "${model.displayName}" from device storage?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -220,7 +266,14 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       ),
     );
     if (confirmed != true) return;
-    await EmbeddedModelManager.instance.deleteModel(model.filename);
+    if (kIsWeb) {
+      final isCustom = _customModels.any((m) => m.id == model.id);
+      if (isCustom) {
+        await EmbeddedModelManager.instance.removeCustomModel(model.id);
+      }
+    } else {
+      await EmbeddedModelManager.instance.deleteModel(model.filename);
+    }
     if (widget.selectedFilename == model.filename) {
       widget.onFilenameSelected('');
     }
@@ -233,9 +286,9 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove all models?'),
-        content: const Text(
-          'This will delete all downloaded GGUF files from device storage.',
-        ),
+        content: Text(kIsWeb
+            ? 'This will clear all custom models from your list.'
+            : 'This will delete all downloaded GGUF files from device storage.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -244,7 +297,7 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              l10n.get('removeAll'),
+              l10n.get('clear'),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
@@ -252,7 +305,11 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
       ),
     );
     if (confirmed != true) return;
-    await EmbeddedModelManager.instance.deleteAllModels();
+    if (kIsWeb) {
+      await EmbeddedModelManager.instance.saveCustomModels([]);
+    } else {
+      await EmbeddedModelManager.instance.deleteAllModels();
+    }
     widget.onFilenameSelected('');
     await _refresh();
   }
@@ -364,6 +421,8 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
   Future<void> _loadModelIntoApp(EmbeddedGgufModel model) async {
     if (_appLoadingFilename != null) return;
 
+
+
     final bool cpuOnly = (_gpuLayersMap[model.filename] ?? 0) == 0;
     if (Platform.isAndroid && cpuOnly && model.sizeBytes > _cpuSizeWarnBytes) {
       if (!context.mounted) return;
@@ -399,12 +458,16 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
     });
     try {
       final gpuLayers = _gpuLayersMap[model.filename] ?? 0;
-      // If GGUF is linked directly from disk (e.g. on desktop), the model.url represents the original path
-      final fullPath = File(model.url).existsSync()
-          ? model.url
-          : await EmbeddedModelManager.instance.fullPathForFilename(
-              model.filename,
-            );
+      final String fullPath;
+      if (kIsWeb) {
+        fullPath = model.url;
+      } else {
+        fullPath = File(model.url).existsSync()
+            ? model.url
+            : await EmbeddedModelManager.instance.fullPathForFilename(
+                model.filename,
+              );
+      }
 
       await EmbeddedLlmAdapter.instance.initialize(
         fullPath,
@@ -414,6 +477,15 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
           if (mounted) setState(() => _appLoadProgress = p);
         },
       );
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        final list = prefs.getStringList('web_downloaded_models') ?? [];
+        if (!list.contains(model.filename)) {
+          list.add(model.filename);
+          await prefs.setStringList('web_downloaded_models', list);
+        }
+        await _refresh();
+      }
     } catch (e) {
       if (mounted) {
         final l10n = McpPlaygroundLocalizations.of(context);
@@ -524,7 +596,7 @@ class _EmbeddedModelPickerWidgetState extends State<EmbeddedModelPickerWidget> {
             // Check if the GGUF file is in models/ folder, or if it points to a valid file on disk (direct path)
             final isDownloaded =
                 _downloadedFilenames.contains(model.filename) ||
-                File(model.url).existsSync();
+                (!kIsWeb && File(model.url).existsSync());
             final isAppLoaded =
                 EmbeddedLlmAdapter.instance.isLoaded &&
                 (appLoadedPath?.endsWith(model.filename) ?? false);
@@ -1086,11 +1158,7 @@ class _ModelTile extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: onLoadToApp,
                         icon: const Icon(Icons.memory, size: 14),
-                        label: Text(
-                          l10n
-                              .get('loadingModelIntoApp')
-                              .replaceAll(RegExp(r'\.\.\.$'), ''),
-                        ),
+                        label: Text(l10n.get('loadModelIntoApp')),
                         style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(

@@ -1,3 +1,11 @@
+## 0.0.13
+
+* Added export/import functionality for playground saved configurations as JSON files. Export saves all setups to a `.json` file via `FilePicker`; import reads a JSON file back, filtering unavailable tools and warning the user via a dialog. Duplicate setups (same name) are skipped on import with a notification.
+* Added new localizations for "Export JSON" / "Import JSON" in English and German.
+* Enabled web/WASM support for `llamadart` by removing all `kIsWeb` blocking guards from `EmbeddedLlmAdapter`. `LlamaBackend()` now auto-selects the platform-appropriate backend.
+* Added `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` meta tags to example web `index.html` for SharedArrayBuffer support.
+* Removed the top-level "Stop after tool call" checkbox from the playground setup screen (now handled per sub-prompt step).
+
 ## 0.0.12
 
 * Added explicit platform declaration in `pubspec.yaml` to ensure Android, iOS, Windows, macOS, Linux, and Web platform support tags are properly recognized on pub.dev.

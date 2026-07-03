@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -119,6 +120,11 @@ class EmbeddedModelManager {
   // ── File listing ─────────────────────────────────────────────────────────────
 
   Future<Set<String>> listDownloadedFilenames() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('web_downloaded_models') ?? [];
+      return list.toSet();
+    }
     final dir = await getModelsDirectory();
     if (!await dir.exists()) return {};
     final files = dir.listSync().whereType<File>();
@@ -195,6 +201,13 @@ class EmbeddedModelManager {
   // ── Deletion ─────────────────────────────────────────────────────────────────
 
   Future<void> deleteModel(String filename) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('web_downloaded_models') ?? [];
+      list.remove(filename);
+      await prefs.setStringList('web_downloaded_models', list);
+      return;
+    }
     final dir = await getModelsDirectory();
     final file = File('${dir.path}/$filename');
     if (await file.exists()) await file.delete();
@@ -203,6 +216,11 @@ class EmbeddedModelManager {
   }
 
   Future<void> deleteAllModels() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('web_downloaded_models');
+      return;
+    }
     final dir = await getModelsDirectory();
     if (!await dir.exists()) return;
     for (final f in dir.listSync().whereType<File>()) {

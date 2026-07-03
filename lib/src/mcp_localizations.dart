@@ -45,6 +45,8 @@ class McpPlaygroundLocalizations {
       'moreActions': 'More Actions',
       'clear': 'Clear',
       'load': 'Load',
+      'exportJson': 'Export JSON',
+      'importJson': 'Import JSON',
       'htmlDocumentPreview': 'HTML Document Preview',
       'tapMagnifierTooltip': 'Tap magnifier to view full screen',
       'htmlPreview': 'HTML Preview',
@@ -53,13 +55,16 @@ class McpPlaygroundLocalizations {
       'copyHtmlSource': 'Copy HTML source',
       'htmlSourceCopied': 'HTML source copied to clipboard.',
       'connectingToServer': 'Connecting to server...',
-      'startingProcessQueryingTools': 'Starting process and querying available tools list.',
+      'startingProcessQueryingTools':
+          'Starting process and querying available tools list.',
       'connecting': 'Connecting...',
       'offline': 'Offline',
       'serverDisabled': 'Server is disabled',
-      'pleaseEnableServerToDiscover': 'Please enable this server using the switch in the server item to start the server and discover its tools.',
+      'pleaseEnableServerToDiscover':
+          'Please enable this server using the switch in the server item to start the server and discover its tools.',
       'serverOfflineOrStarting': 'Server is offline or starting',
-      'makeSureServerIsRunningToDiscover': 'Make sure this server is installed and running properly to discover its tools.',
+      'makeSureServerIsRunningToDiscover':
+          'Make sure this server is installed and running properly to discover its tools.',
       'noToolsRegistered': 'No tools registered by this server.',
       'description': 'Description',
       'inputSchema': 'Input Schema',
@@ -72,12 +77,14 @@ class McpPlaygroundLocalizations {
       'loadModelFailed': 'Load model failed',
       'modelLoadedInApp': 'Model loaded',
       'unloadModel': 'Unload model',
+      'loadModelIntoApp': 'Load into app',
       'loadingModelIntoApp': 'Loading model into app...',
       'discoverPopular': 'Discover popular',
       'addGgufUrl': 'Add GGUF URL',
       'addGgufDisk': 'Add GGUF from Disk',
       'removeAll': 'Remove all',
-      'selectDownloadedModelHint': 'Select a downloaded model above to activate it.',
+      'selectDownloadedModelHint':
+          'Select a downloaded model above to activate it.',
       'downloadModelHint': 'Download a model to use on-device inference.',
     },
     'de': {
@@ -120,6 +127,8 @@ class McpPlaygroundLocalizations {
       'moreActions': 'Weitere Aktionen',
       'clear': 'Löschen',
       'load': 'Laden',
+      'exportJson': 'JSON exportieren',
+      'importJson': 'JSON importieren',
       'htmlDocumentPreview': 'HTML-Dokument-Vorschau',
       'tapMagnifierTooltip': 'Lupe tippen, um im Vollbildmodus anzuzeigen',
       'htmlPreview': 'HTML-Vorschau',
@@ -128,13 +137,16 @@ class McpPlaygroundLocalizations {
       'copyHtmlSource': 'HTML-Quellcode kopieren',
       'htmlSourceCopied': 'HTML-Quellcode in die Zwischenablage kopiert.',
       'connectingToServer': 'Verbindung zum Server wird hergestellt...',
-      'startingProcessQueryingTools': 'Prozess wird gestartet und Liste der verfügbaren Werkzeuge abgefragt.',
+      'startingProcessQueryingTools':
+          'Prozess wird gestartet und Liste der verfügbaren Werkzeuge abgefragt.',
       'connecting': 'Verbindung wird hergestellt...',
       'offline': 'Offline',
       'serverDisabled': 'Server ist deaktiviert',
-      'pleaseEnableServerToDiscover': 'Bitte aktivieren Sie diesen Server, um seine Werkzeuge zu entdecken.',
+      'pleaseEnableServerToDiscover':
+          'Bitte aktivieren Sie diesen Server, um seine Werkzeuge zu entdecken.',
       'serverOfflineOrStarting': 'Server ist offline oder startet',
-      'makeSureServerIsRunningToDiscover': 'Stellen Sie sicher, dass dieser Server ordnungsgemäß läuft, um seine Werkzeuge zu entdecken.',
+      'makeSureServerIsRunningToDiscover':
+          'Stellen Sie sicher, dass dieser Server ordnungsgemäß läuft, um seine Werkzeuge zu entdecken.',
       'noToolsRegistered': 'Keine Werkzeuge von diesem Server registriert.',
       'description': 'Beschreibung',
       'inputSchema': 'Eingabeschema',
@@ -147,13 +159,16 @@ class McpPlaygroundLocalizations {
       'loadModelFailed': 'Modell laden fehlgeschlagen',
       'modelLoadedInApp': 'Modell geladen',
       'unloadModel': 'Modell entladen',
+      'loadModelIntoApp': 'In App laden',
       'loadingModelIntoApp': 'Modell wird geladen...',
       'discoverPopular': 'Beliebte entdecken',
       'addGgufUrl': 'GGUF-URL hinzufügen',
       'addGgufDisk': 'GGUF von Festplatte',
       'removeAll': 'Alle entfernen',
-      'selectDownloadedModelHint': 'Wählen Sie ein heruntergeladenes Modell aus, um es zu aktivieren.',
-      'downloadModelHint': 'Laden Sie ein Modell herunter, um die lokale Inferenz zu nutzen.',
+      'selectDownloadedModelHint':
+          'Wählen Sie ein heruntergeladenes Modell aus, um es zu aktivieren.',
+      'downloadModelHint':
+          'Laden Sie ein Modell herunter, um die lokale Inferenz zu nutzen.',
     },
   };
 

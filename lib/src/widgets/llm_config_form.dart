@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models.dart';
 import '../../llm_service.dart';
@@ -95,9 +94,7 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
             children: const [
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 8),
-              Expanded(
-                child: Text('Connection Successful'),
-              ),
+              Expanded(child: Text('Connection Successful')),
             ],
           ),
           content: Text(
@@ -120,9 +117,7 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
             children: const [
               Icon(Icons.error_outline, color: Colors.red),
               SizedBox(width: 8),
-              Expanded(
-                child: Text('Connection Failed'),
-              ),
+              Expanded(child: Text('Connection Failed')),
             ],
           ),
           content: Text(e.toString()),
@@ -228,10 +223,7 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
             border: OutlineInputBorder(),
             isDense: true,
           ),
-          items: LlmProvider.values.where((p) {
-            if (kIsWeb && p == LlmProvider.embedded) return false;
-            return true;
-          }).map((provider) {
+          items: LlmProvider.values.map((provider) {
             return DropdownMenuItem(
               value: provider,
               child: Text(provider.displayName),
@@ -242,30 +234,41 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
               widget.onProviderChanged(val);
               setState(() {
                 _fetchedModels = [];
-                if (val == LlmProvider.gemini && widget.modelCtrl.text.isEmpty) {
+                if (val == LlmProvider.gemini &&
+                    widget.modelCtrl.text.isEmpty) {
                   widget.modelCtrl.text = 'gemini-2.5-flash';
-                } else if (val == LlmProvider.openai && widget.modelCtrl.text.isEmpty) {
+                } else if (val == LlmProvider.openai &&
+                    widget.modelCtrl.text.isEmpty) {
                   widget.modelCtrl.text = 'gpt-4o-mini';
-                } else if (val == LlmProvider.claude && widget.modelCtrl.text.isEmpty) {
+                } else if (val == LlmProvider.claude &&
+                    widget.modelCtrl.text.isEmpty) {
                   widget.modelCtrl.text = 'claude-3-5-sonnet-latest';
-                } else if (val == LlmProvider.mistral && widget.modelCtrl.text.isEmpty) {
+                } else if (val == LlmProvider.mistral &&
+                    widget.modelCtrl.text.isEmpty) {
                   widget.modelCtrl.text = 'mistral-large-latest';
                 }
               });
             }
           },
         ),
-        if (widget.provider != LlmProvider.none && widget.provider != LlmProvider.embedded) ...[
+        if (widget.provider != LlmProvider.none &&
+            widget.provider != LlmProvider.embedded) ...[
           // Autocomplete for Model name
           Autocomplete<String>(
             initialValue: widget.modelCtrl.value,
             optionsBuilder: (textEditingValue) {
               final defaultOpts = _defaultModels[widget.provider] ?? [];
-              final models = _fetchedModels.isNotEmpty ? _fetchedModels : defaultOpts;
+              final models = _fetchedModels.isNotEmpty
+                  ? _fetchedModels
+                  : defaultOpts;
               if (textEditingValue.text.isEmpty) {
                 return models;
               }
-              return models.where((m) => m.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+              return models.where(
+                (m) => m.toLowerCase().contains(
+                  textEditingValue.text.toLowerCase(),
+                ),
+              );
             },
             fieldViewBuilder: (ctx, controller, focusNode, onSubmitted) {
               if (controller.text != widget.modelCtrl.text) {
@@ -283,7 +286,9 @@ class _LlmConfigFormState extends State<LlmConfigForm> {
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Model name is required' : null,
+                validator: (v) => v == null || v.trim().isEmpty
+                    ? 'Model name is required'
+                    : null,
               );
             },
             onSelected: (v) {
@@ -426,7 +431,9 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
             Expanded(
               child: TextFormField(
                 controller: tempCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Temperature',
                   hintText: '0.0 - 2.0 (e.g. 0.2)',
@@ -508,7 +515,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
             Expanded(
               child: _field(
                 label: 'Top K',
-                tooltip: 'Limits vocabulary to the top-K tokens at each step. Lower = more deterministic. Range: 1–100.',
+                tooltip:
+                    'Limits vocabulary to the top-K tokens at each step. Lower = more deterministic. Range: 1–100.',
                 hint: '40',
                 controller: topKCtrl,
                 isInt: true,
@@ -518,7 +526,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
             Expanded(
               child: _field(
                 label: 'Top P',
-                tooltip: 'Nucleus sampling cutoff. Lower = more focused output. Range: 0.0–1.0.',
+                tooltip:
+                    'Nucleus sampling cutoff. Lower = more focused output. Range: 0.0–1.0.',
                 hint: '0.9',
                 controller: topPCtrl,
                 isDecimal: true,
@@ -531,7 +540,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
             Expanded(
               child: _field(
                 label: 'Repeat Penalty',
-                tooltip: 'Penalizes repeating tokens. Values > 1.0 reduce repetition. Range: 0.5–2.0.',
+                tooltip:
+                    'Penalizes repeating tokens. Values > 1.0 reduce repetition. Range: 0.5–2.0.',
                 hint: '1.1',
                 controller: repeatPenaltyCtrl,
                 isDecimal: true,
@@ -541,7 +551,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
             Expanded(
               child: _field(
                 label: 'Seed',
-                tooltip: 'Random seed for reproducible outputs. Leave empty for random.',
+                tooltip:
+                    'Random seed for reproducible outputs. Leave empty for random.',
                 hint: '42',
                 controller: seedCtrl,
                 isInt: true,
@@ -553,7 +564,10 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text('Thinking / Reasoning capabilities', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+          title: const Text(
+            'Thinking / Reasoning capabilities',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          ),
           subtitle: const Text(
             'Allow the model to emit internal thinking/reasoning tokens (e.g. <think> blocks, QwQ, DeepSeek-R1). Disable to suppress thinking output and reduce token usage.',
             style: TextStyle(fontSize: 10, color: Colors.grey),
@@ -564,22 +578,34 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text('Small Language Model (SLM)', style: TextStyle(fontSize: 12)),
-          subtitle: const Text('Enforce short and simple warmup instructions', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          title: const Text(
+            'Small Language Model (SLM)',
+            style: TextStyle(fontSize: 12),
+          ),
+          subtitle: const Text(
+            'Enforce short and simple warmup instructions',
+            style: TextStyle(fontSize: 10, color: Colors.grey),
+          ),
           value: isSlm,
           onChanged: (v) => onIsSlmChanged(v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text('Multi-modal features enabled', style: TextStyle(fontSize: 12)),
+          title: const Text(
+            'Multi-modal features enabled',
+            style: TextStyle(fontSize: 12),
+          ),
           value: isMultiModal,
           onChanged: (v) => onIsMultiModalChanged(v),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text('Native tool calls supported', style: TextStyle(fontSize: 12)),
+          title: const Text(
+            'Native tool calls supported',
+            style: TextStyle(fontSize: 12),
+          ),
           value: useNativeToolCall,
           onChanged: (v) => onUseNativeToolCallChanged(v),
         ),
@@ -610,7 +636,9 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
       ),
       keyboardType: isInt
           ? TextInputType.number
-          : (isDecimal ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text),
+          : (isDecimal
+                ? const TextInputType.numberWithOptions(decimal: true)
+                : TextInputType.text),
       validator: (v) {
         if (v == null || v.trim().isEmpty) return null;
         if (isInt) {
