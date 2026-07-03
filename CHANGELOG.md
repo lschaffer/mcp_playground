@@ -1,3 +1,7 @@
+## 0.0.11
+
+* Fixed compile errors in `llm_service.dart` related to `anthropic.InputContentBlock.text` missing positional arguments, resolving the 0/20 platform support issue on pub.dev.
+
 ## 0.0.10
 
 * Added user-cancellable prompt execution with a stop button in the chat input bar. When generation is active, the send button is replaced by a red stop-circle button; cancelling skips all remaining sub-prompts and tool iterations.
