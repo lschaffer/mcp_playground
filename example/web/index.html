@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html>
+
 <head>
+  <!-- Required for WASM/WebGPU SharedArrayBuffer support (llamadart) -->
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -27,11 +32,12 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon.png" />
 
   <title>mcp_playground_example</title>
   <link rel="manifest" href="manifest.json">
 </head>
+
 <body>
   <!--
     You can customize the "flutter_bootstrap.js" script.
@@ -43,4 +49,5 @@
   -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
+
 </html>

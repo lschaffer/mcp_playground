@@ -12,17 +12,16 @@ class EmbeddedLlmAdapter {
   EmbeddedLlmAdapter._();
   static final EmbeddedLlmAdapter instance = EmbeddedLlmAdapter._();
 
-  // LlamaBackend registers ggml backends globally. Keep a single instance
-  // for the entire app lifetime on native platforms. Guard on Web to avoid FFI failures.
-  static final LlamaBackend _backend = kIsWeb
-      ? null as dynamic
-      : LlamaBackend();
+  // LlamaBackend auto-selects the platform-appropriate backend (llama.cpp
+  // on native, WebGPU/WASM on web). Keep a single instance for the entire
+  // app lifetime.
+  static final LlamaBackend _backend = LlamaBackend();
 
   LlamaEngine? _engine;
   String? _loadedModelPath;
   Future<void>? _loadingFuture;
 
-  bool get isLoaded => !kIsWeb && _engine?.isReady == true;
+  bool get isLoaded => _engine?.isReady == true;
   String? get loadedModelPath => _loadedModelPath;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -35,10 +34,6 @@ class EmbeddedLlmAdapter {
     int contextSize = 4096,
     void Function(double progress)? onProgress,
   }) async {
-    if (kIsWeb) {
-      throw UnsupportedError('Embedded models are not supported in web mode.');
-    }
-
     final effectiveContextSize = _shouldTruncate
         ? contextSize.clamp(1, _mobileMaxContextSize)
         : contextSize;
@@ -117,7 +112,6 @@ class EmbeddedLlmAdapter {
   }
 
   Future<void> _unloadCurrentModel() async {
-    if (kIsWeb) return;
     if (_engine != null && isLoaded) {
       await _engine!.unloadModel();
     }
@@ -132,7 +126,6 @@ class EmbeddedLlmAdapter {
   // ── GPU capabilities ───────────────────────────────────────────────────────
 
   Future<bool> isGpuSupported() async {
-    if (kIsWeb) return false;
     try {
       return await _backend.isGpuSupported();
     } catch (_) {
@@ -141,7 +134,6 @@ class EmbeddedLlmAdapter {
   }
 
   Future<({int total, int free})> getVramInfo() async {
-    if (kIsWeb) return (total: 0, free: 0);
     try {
       return await _backend.getVramInfo();
     } catch (_) {
@@ -161,10 +153,6 @@ class EmbeddedLlmAdapter {
     double penalty = 1.15,
     void Function(String chunk)? onStreamChunk,
   }) async {
-    if (kIsWeb) {
-      throw UnsupportedError('Embedded models are not supported in web mode.');
-    }
-
     final engine = _engine;
     if (engine == null || !engine.isReady) {
       throw StateError('Embedded model not loaded. Call initialize() first.');
