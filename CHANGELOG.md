@@ -1,3 +1,7 @@
+## 0.0.12
+
+* Added explicit platform declaration in `pubspec.yaml` to ensure Android, iOS, Windows, macOS, Linux, and Web platform support tags are properly recognized on pub.dev.
+
 ## 0.0.11
 
 * Fixed compile errors in `llm_service.dart` related to `anthropic.InputContentBlock.text` missing positional arguments, resolving the 0/20 platform support issue on pub.dev.
