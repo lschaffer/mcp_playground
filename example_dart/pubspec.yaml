@@ -1,0 +1,16 @@
+name: mcp_playground_dart_example
+description: Pure Dart CLI example using mcp_playground_dart with weather tools.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  mcp_playground_dart:
+    path: ../mcp_playground_dart
+  mcp_playground_shared_dart_tools:
+    path: ../example/shared_dart_tools
+
+dev_dependencies:
+  lints: ^6.0.0

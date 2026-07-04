@@ -1,0 +1,502 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
+import '../models/models.dart';
+
+/// Callback signature for logging output.
+typedef McpLogCallback = void Function(String message, {bool isError});
+
+/// Core client connection class to communicate with MCP servers over HTTP/HTTPS.
+class MCPClient {
+  /// The base URL of the remote MCP server.
+  final String serverUrl;
+
+  /// The endpoint path for MCP requests (defaults to `/mcp`).
+  final String mcpEndpoint;
+
+  /// Optional bearer token used for authorization headers.
+  final String? bearerToken;
+
+  /// Optional API password used for basic authentication headers.
+  final String? apiPassword;
+
+  /// Optional log callback handler to pipe system logs.
+  final McpLogCallback? logCallback;
+
+  String? _effectiveBearerToken;
+  final http.Client _httpClient = http.Client();
+  bool _isConnected = false;
+  final Uuid _uuid = const Uuid();
+
+  List<MCPTool> _availableTools = [];
+  List<MCPResource> _availableResources = [];
+
+  // Reconnection management
+  Timer? _healthCheckTimer;
+  bool _isReconnecting = false;
+  int _reconnectionAttempts = 0;
+  static const int _maxReconnectionAttempts = 5;
+  static const Duration _healthCheckInterval = Duration(seconds: 30);
+  static const Duration _reconnectionDelay = Duration(seconds: 5);
+
+  /// Session ID for stateful Streamable HTTP transport (MCP 2025).
+  String? _sessionId;
+
+  /// Creates a new [MCPClient] instance.
+  MCPClient(
+    this.serverUrl, {
+    this.mcpEndpoint = '/mcp',
+    this.bearerToken,
+    this.apiPassword,
+    this.logCallback,
+  }) : _effectiveBearerToken = bearerToken;
+
+  void _log(String message, {bool isError = false}) {
+    if (logCallback != null) {
+      logCallback!(message, isError: isError);
+    }
+  }
+
+  String get _normalizedServerUrl {
+    final trimmed = serverUrl.trim();
+    return trimmed.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  Uri _rpcUri() {
+    final uri = Uri.parse(_normalizedServerUrl);
+    final normalizedEndpoint = mcpEndpoint.startsWith('/')
+        ? mcpEndpoint
+        : '/$mcpEndpoint';
+    final path = uri.path;
+    if (path.toLowerCase().endsWith(normalizedEndpoint.toLowerCase())) {
+      return uri;
+    }
+    final separator = path.endsWith('/') ? '' : '/';
+    final endpointPart = normalizedEndpoint.startsWith('/')
+        ? normalizedEndpoint.substring(1)
+        : normalizedEndpoint;
+    return uri.replace(path: '$path$separator$endpointPart');
+  }
+
+  Uri _healthUri() {
+    final uri = Uri.parse(_normalizedServerUrl);
+    final normalizedEndpoint = mcpEndpoint.startsWith('/')
+        ? mcpEndpoint
+        : '/$mcpEndpoint';
+    final path = uri.path;
+    if (path.toLowerCase().endsWith(normalizedEndpoint.toLowerCase())) {
+      return uri.replace(
+        path: path.replaceFirst(
+          RegExp(
+            '${RegExp.escape(normalizedEndpoint)}\$',
+            caseSensitive: false,
+          ),
+          '/health',
+        ),
+      );
+    }
+    final separator = path.endsWith('/') ? '' : '/';
+    return uri.replace(path: '$path${separator}health');
+  }
+
+  Map<String, String> _getHeaders({Map<String, String>? additionalHeaders}) {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    };
+
+    if (apiPassword != null && apiPassword!.isNotEmpty) {
+      final username = _effectiveBearerToken ?? '';
+      final bytes = utf8.encode('$username:$apiPassword');
+      final base64Str = base64.encode(bytes);
+      headers['Authorization'] = 'Basic $base64Str';
+    } else if (_effectiveBearerToken != null &&
+        _effectiveBearerToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_effectiveBearerToken';
+    }
+
+    if (_sessionId != null) {
+      headers['Mcp-Session-Id'] = _sessionId!;
+    }
+
+    if (additionalHeaders != null) {
+      headers.addAll(additionalHeaders);
+    }
+
+    return headers;
+  }
+
+  static String _extractFirstSseData(String sseBody) {
+    for (final line in sseBody.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.startsWith('data: ') && trimmed.length > 6) {
+        final json = trimmed.substring(6).trim();
+        if (json.isNotEmpty && json != '[DONE]') return json;
+      }
+    }
+    return sseBody;
+  }
+
+  /// Whether the client is currently connected successfully to the MCP server.
+  bool get isConnected => _isConnected;
+
+  /// Cached list of tools exposed by the remote MCP server.
+  List<MCPTool> get availableTools => List.unmodifiable(_availableTools);
+
+  /// Cached list of resources exposed by the remote MCP server.
+  List<MCPResource> get availableResources =>
+      List.unmodifiable(_availableResources);
+
+  /// Connects to the remote server and performs the MCP initialize sequence.
+  Future<void> connect() async {
+    try {
+      await _testConnection();
+      _isConnected = true;
+      _reconnectionAttempts = 0;
+
+      await _initialize();
+      await _loadCapabilities();
+      _startHealthCheck();
+
+      _log('Connected successfully via HTTP');
+    } catch (e) {
+      _log('Failed to connect: $e', isError: true);
+      _isConnected = false;
+      rethrow;
+    }
+  }
+
+  Future<void> _testConnection() async {
+    final isMcpEndpoint = Uri.parse(
+      _normalizedServerUrl,
+    ).path.toLowerCase().endsWith('/mcp');
+
+    if (isMcpEndpoint) {
+      final probeBody = jsonEncode({
+        'jsonrpc': '2.0',
+        'method': 'initialize',
+        'id': 'probe',
+        'params': {
+          'protocolVersion': '2024-11-05',
+          'capabilities': {},
+          'clientInfo': {'name': 'Dart MCP Client', 'version': '1.0.0'},
+        },
+      });
+      try {
+        var response = await _httpClient
+            .post(_rpcUri(), headers: _getHeaders(), body: probeBody)
+            .timeout(const Duration(seconds: 20));
+        if (response.statusCode == 401 && _effectiveBearerToken != null) {
+          _log('Got 401 on probe, retrying without auth headers');
+          _effectiveBearerToken = null;
+          response = await _httpClient
+              .post(_rpcUri(), headers: _getHeaders(), body: probeBody)
+              .timeout(const Duration(seconds: 20));
+        }
+        if (response.statusCode != 200) {
+          throw Exception('MCP probe failed: HTTP ${response.statusCode}');
+        }
+      } catch (e) {
+        throw Exception('Connection test failed: $e');
+      }
+      return;
+    }
+
+    try {
+      final response = await _httpClient
+          .get(_healthUri(), headers: _getHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        throw Exception('Server returned status ${response.statusCode}');
+      }
+    } catch (e) {
+      try {
+        final response = await _httpClient
+            .post(
+              _rpcUri(),
+              headers: _getHeaders(),
+              body: jsonEncode({
+                'jsonrpc': '2.0',
+                'method': 'initialize',
+                'id': 'probe',
+                'params': {
+                  'protocolVersion': '2024-11-05',
+                  'capabilities': {},
+                  'clientInfo': {'name': 'Dart MCP Client', 'version': '1.0.0'},
+                },
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode != 200) {
+          throw Exception('MCP endpoint test failed: ${response.statusCode}');
+        }
+      } catch (testError) {
+        throw Exception('Connection test failed: $testError');
+      }
+    }
+  }
+
+  Future<void> _initialize() async {
+    final initBody = jsonEncode({
+      'jsonrpc': '2.0',
+      'id': _uuid.v4(),
+      'method': 'initialize',
+      'params': {
+        'protocolVersion': '2024-11-05',
+        'capabilities': {
+          'roots': {'listChanged': true},
+          'sampling': {},
+          'tools': {'listChanged': true},
+          'resources': {'listChanged': true},
+        },
+        'clientInfo': {'name': 'Dart MCP Client', 'version': '1.0.0'},
+      },
+    });
+
+    final response = await _httpClient
+        .post(_rpcUri(), headers: _getHeaders(), body: initBody)
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Initialize failed: HTTP ${response.statusCode}');
+    }
+
+    final sessionId = response.headers['mcp-session-id'];
+    if (sessionId != null && sessionId.isNotEmpty) {
+      _sessionId = sessionId;
+      _log('Session established: $sessionId');
+    }
+
+    await _sendNotification('notifications/initialized');
+  }
+
+  Future<void> _loadCapabilities() async {
+    final toolsResponse = await _sendRequest(
+      MCPRequest(id: _uuid.v4(), method: 'tools/list'),
+    );
+    if (toolsResponse['tools'] != null) {
+      _availableTools = (toolsResponse['tools'] as List)
+          .map((tool) => MCPTool.fromJson(tool))
+          .toList();
+    }
+
+    try {
+      final resourcesResponse = await _sendRequest(
+        MCPRequest(id: _uuid.v4(), method: 'resources/list'),
+      );
+      if (resourcesResponse['resources'] != null) {
+        _availableResources = (resourcesResponse['resources'] as List)
+            .map((resource) => MCPResource.fromJson(resource))
+            .toList();
+      }
+    } catch (e) {
+      _log('Resources not supported by server: $e');
+    }
+
+    _log(
+      'Loaded ${_availableTools.length} tools and ${_availableResources.length} resources',
+    );
+  }
+
+  Future<dynamic> _sendRequest(MCPRequest request) async {
+    if (!_isConnected) {
+      throw Exception('Not connected to MCP server');
+    }
+
+    try {
+      final response = await _httpClient
+          .post(
+            _rpcUri(),
+            headers: _getHeaders(),
+            body: jsonEncode(request.toJson()),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'HTTP ${response.statusCode}: ${response.reasonPhrase}',
+        );
+      }
+
+      final contentType = response.headers['content-type'] ?? '';
+      final rawBody = contentType.contains('text/event-stream')
+          ? _extractFirstSseData(response.body)
+          : response.body;
+      final responseData = jsonDecode(rawBody) as Map<String, dynamic>;
+
+      if (responseData.containsKey('error')) {
+        final error = responseData['error'];
+        throw Exception(
+          'Server error: ${error['message'] ?? error.toString()}',
+        );
+      }
+
+      return responseData['result'];
+    } catch (e) {
+      if (e.toString().contains('Connection') ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('TimeoutException') ||
+          e.toString().contains('Failed host lookup')) {
+        if (_isConnected) {
+          _isConnected = false;
+          _attemptReconnection();
+        }
+      }
+      throw Exception('MCP request failed: $e');
+    }
+  }
+
+  Future<void> _sendNotification(
+    String method, [
+    Map<String, dynamic>? params,
+  ]) async {
+    if (!_isConnected) return;
+    try {
+      final notification = <String, dynamic>{
+        'jsonrpc': '2.0',
+        'method': method,
+        'params': params,
+      }..removeWhere((key, value) => value == null);
+
+      await _httpClient
+          .post(
+            _rpcUri(),
+            headers: _getHeaders(),
+            body: jsonEncode(notification),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      _log('Failed to send notification: $e', isError: true);
+    }
+  }
+
+  /// Requests the remote MCP server to execute a specific tool with arguments.
+  Future<MCPToolResult> callTool(
+    String name,
+    Map<String, dynamic> arguments,
+  ) async {
+    final request = MCPRequest(
+      id: _uuid.v4(),
+      method: 'tools/call',
+      params: {'name': name, 'arguments': arguments},
+    );
+
+    final response = await _sendRequest(request);
+
+    if (response is Map<String, dynamic> && response['content'] is List) {
+      return MCPToolResult.fromJson(response);
+    }
+
+    if (response != null) {
+      final content = <Map<String, dynamic>>[];
+      if (response is String) {
+        content.add({'type': 'text', 'text': response});
+      } else {
+        content.add({'type': 'text', 'text': jsonEncode(response)});
+      }
+      return MCPToolResult(
+        content: content.map((item) => MCPContent.fromJson(item)).toList(),
+        isError: false,
+      );
+    }
+
+    return const MCPToolResult(
+      content: [
+        MCPContent(
+          type: 'text',
+          text: '{"success": false, "error": "No response from server"}',
+        ),
+      ],
+      isError: true,
+    );
+  }
+
+  /// Requests the remote MCP server to read a resource by its URI.
+  Future<String> readResource(String uri) async {
+    final request = MCPRequest(
+      id: _uuid.v4(),
+      method: 'resources/read',
+      params: {'uri': uri},
+    );
+    final response = await _sendRequest(request);
+    final contents = response['contents'] as List?;
+    if (contents != null && contents.isNotEmpty) {
+      return contents.first['text'] ?? '';
+    }
+    return '';
+  }
+
+  void _startHealthCheck() {
+    _stopHealthCheck();
+    _healthCheckTimer = Timer.periodic(_healthCheckInterval, (_) {
+      _performHealthCheck();
+    });
+  }
+
+  void _stopHealthCheck() {
+    _healthCheckTimer?.cancel();
+    _healthCheckTimer = null;
+  }
+
+  Future<void> _performHealthCheck() async {
+    if (!_isConnected) return;
+    try {
+      await _testConnection();
+    } catch (e) {
+      _log('Health check failed, attempting reconnection: $e');
+      _isConnected = false;
+      _attemptReconnection();
+    }
+  }
+
+  Future<void> _attemptReconnection() async {
+    if (_isReconnecting || _reconnectionAttempts >= _maxReconnectionAttempts) {
+      return;
+    }
+
+    _isReconnecting = true;
+    _reconnectionAttempts++;
+
+    final backoffDelay = Duration(
+      seconds: (_reconnectionDelay.inSeconds * _reconnectionAttempts).clamp(
+        5,
+        60,
+      ),
+    );
+    _log(
+      'Attempting reconnection $_reconnectionAttempts/$_maxReconnectionAttempts in ${backoffDelay.inSeconds}s...',
+    );
+    await Future.delayed(backoffDelay);
+
+    try {
+      await connect();
+      _log('Reconnection successful after $_reconnectionAttempts attempts');
+    } catch (e) {
+      _log(
+        'Reconnection attempt $_reconnectionAttempts failed: $e',
+        isError: true,
+      );
+    } finally {
+      _isReconnecting = false;
+    }
+  }
+
+  /// Force-triggers reconnection to the remote MCP server.
+  Future<void> reconnect() async {
+    _reconnectionAttempts = 0;
+    _isReconnecting = false;
+    await connect();
+  }
+
+  /// Disconnects from the remote server and stops health checking.
+  Future<void> disconnect() async {
+    _isConnected = false;
+    _stopHealthCheck();
+  }
+
+  /// Disposes resources used by this client.
+  void dispose() {
+    disconnect();
+    _httpClient.close();
+  }
+}
