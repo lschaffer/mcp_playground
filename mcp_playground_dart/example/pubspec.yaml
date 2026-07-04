@@ -1,0 +1,11 @@
+name: mcp_playground_dart_example
+description: Simple self-contained example for mcp_playground_dart.
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  mcp_playground_dart:
+    path: ../
+  http: ^1.2.1

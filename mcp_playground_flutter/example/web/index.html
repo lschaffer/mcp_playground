@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="coi-serviceworker.js"></script>
+  <!-- Required for WASM/WebGPU SharedArrayBuffer support (llamadart) -->
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="mcp_playground_example">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png" />
+
+  <title>mcp_playground_example</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+  <script type="module">
+    // Deterministic bridge-readiness signal awaited by the Dart app so it never
+    // races the asynchronous bridge import.
+    let __resolveBridgeReady;
+    let __rejectBridgeReady;
+    window.__llamadartBridgeReady = false;
+    window.__llamadartBridgeReadyPromise = new Promise((resolve, reject) => {
+      __resolveBridgeReady = resolve;
+      __rejectBridgeReady = reject;
+    });
+    window.__llamadartBridgeReadyPromise.catch(function () {});
+
+    function markBridgeReady() {
+      window.__llamadartBridgeReady = true;
+      if (__resolveBridgeReady) __resolveBridgeReady();
+    }
+
+    function markBridgeFailed(detail) {
+      window.__llamadartBridgeReady = false;
+      window.__llamadartBridgeLoadError = detail;
+      if (__rejectBridgeReady) __rejectBridgeReady(new Error(detail));
+    }
+
+    // Safety timeout
+    setTimeout(function () {
+      if (!window.__llamadartBridgeReady && !window.__llamadartBridgeLoadError) {
+        markBridgeFailed('Bridge runtime did not become ready within 30s.');
+      }
+    }, 30000);
+
+    const bridgeAssetsRepo = 'leehack/llama-web-bridge-assets';
+    const bridgeAssetsTag = 'v0.1.17';
+    const cdnBridgeUrl = `https://cdn.jsdelivr.net/gh/${bridgeAssetsRepo}@${bridgeAssetsTag}/llama_webgpu_bridge.js`;
+
+    function deriveWorkerModuleUrl(moduleUrl) {
+      try {
+        const url = new URL(moduleUrl, window.location.href);
+        url.pathname = url.pathname.replace(/\/llama_webgpu_bridge\.js$/, '/llama_webgpu_bridge_worker.js');
+        return url.toString();
+      } catch (_) { return null; }
+    }
+
+    function deriveMem64CoreModuleUrl(moduleUrl) {
+      try {
+        const url = new URL(moduleUrl, window.location.href);
+        url.pathname = url.pathname.replace(/\/llama_webgpu_bridge\.js$/, '/llama_webgpu_core_mem64.js');
+        return url.toString();
+      } catch (_) { return null; }
+    }
+
+    function deriveCoreWasmUrl(moduleUrl, memory64 = false) {
+      try {
+        const url = new URL(moduleUrl, window.location.href);
+        url.pathname = url.pathname.replace(/\/llama_webgpu_bridge\.js$/, memory64 ? '/llama_webgpu_core_mem64.wasm' : '/llama_webgpu_core.wasm');
+        return url.toString();
+      } catch (_) { return null; }
+    }
+
+    async function resolveCoreModuleUrl(moduleUrl) {
+      const bridgeUrl = new URL(moduleUrl, window.location.href);
+      const coreUrl = new URL('./llama_webgpu_core.js', bridgeUrl);
+      const version = bridgeUrl.searchParams.get('v');
+      if (version != null && version.length > 0) {
+        coreUrl.searchParams.set('v', version);
+      }
+      return coreUrl.toString();
+    }
+
+    async function loadBridge(moduleUrl, source) {
+      const coreModuleUrl = await resolveCoreModuleUrl(moduleUrl);
+      const mod = await import(moduleUrl);
+      if (!mod?.LlamaWebGpuBridge) {
+        throw new Error('Bridge module loaded but LlamaWebGpuBridge export was missing.');
+      }
+
+      const supportsDedicatedWorkerEntry = typeof mod.enableBridgeWorkerHost === 'function';
+      const workerModuleUrl = supportsDedicatedWorkerEntry ? deriveWorkerModuleUrl(moduleUrl) : null;
+      const coreModuleUrlMem64 = deriveMem64CoreModuleUrl(moduleUrl);
+      const wasmUrl = deriveCoreWasmUrl(moduleUrl);
+      const wasmUrlMem64 = deriveCoreWasmUrl(moduleUrl, true);
+      const preferMemory64 = window.__llamadartBridgeEnableMem64 === true;
+
+      window.LlamaWebGpuBridge = mod.LlamaWebGpuBridge;
+      window.__llamadartBridgeAdaptiveSafariGpu = mod.LlamaWebGpuBridge?.supportsSafariAdaptiveGpu === true;
+      window.__llamadartBridgeAssetSource = source;
+      window.__llamadartBridgeModuleUrl = moduleUrl;
+      window.__llamadartBridgeCoreModuleUrl = coreModuleUrl;
+      window.__llamadartBridgeCoreModuleUrlMem64 = coreModuleUrlMem64;
+      window.__llamadartBridgeWasmUrl = wasmUrl;
+      window.__llamadartBridgeWasmUrlMem64 = wasmUrlMem64;
+      window.__llamadartBridgeWorkerUrl = workerModuleUrl;
+      window.__llamadartBridgePreferMemory64 = preferMemory64;
+      window.__llamadartBridgeWorkerFallbackReason = null;
+      window.__llamadartBridgeLoadError = null;
+      markBridgeReady();
+    }
+
+    const localBridgeUrl = `./webgpu_bridge/llama_webgpu_bridge.js?v=${bridgeAssetsTag}`;
+    const preferLocalBridgeRuntime =
+      window.__llamadartPreferLocalBridgeRuntime === true ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'localhost';
+
+    const primaryUrl = preferLocalBridgeRuntime ? localBridgeUrl : cdnBridgeUrl;
+    const primarySource = preferLocalBridgeRuntime ? 'local' : 'cdn';
+    const fallbackUrl = preferLocalBridgeRuntime ? cdnBridgeUrl : localBridgeUrl;
+    const fallbackSource = preferLocalBridgeRuntime ? 'cdn' : 'local';
+
+    let primaryError = null;
+    loadBridge(primaryUrl, primarySource)
+      .catch((err) => {
+        primaryError = err;
+        console.warn(`llamadart: ${primarySource.toUpperCase()} bridge load failed, falling back to ${fallbackSource}`, err);
+        return loadBridge(fallbackUrl, fallbackSource);
+      })
+      .catch((fallbackErr) => {
+        const detail =
+          `${primarySource.toUpperCase()} load failed: ${String(primaryError)} | ` +
+          `${fallbackSource.toUpperCase()} load failed: ${String(fallbackErr)}`;
+        markBridgeFailed(detail);
+      });
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      const originalRegister = navigator.serviceWorker.register;
+      navigator.serviceWorker.register = function(scriptURL, options) {
+        if (scriptURL && scriptURL.includes('flutter_service_worker.js')) {
+          console.log('Intercepted and blocked Flutter service worker registration:', scriptURL);
+          return Promise.resolve({
+            scope: options?.scope || '/',
+            unregister: () => Promise.resolve(true),
+            update: () => Promise.resolve(),
+            addEventListener: () => {},
+            removeEventListener: () => {},
+          });
+        }
+        return originalRegister.apply(this, arguments);
+      };
+    }
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+
+</html>

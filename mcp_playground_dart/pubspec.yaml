@@ -1,0 +1,22 @@
+name: mcp_playground_dart
+description: "Pure Dart core for AI Agent Playground. Agent execution engine, LLM adapters, MCP clients, and tool orchestration — no Flutter dependency."
+version: 0.1.0
+homepage: https://github.com/lschaffer/mcp_playground
+repository: https://github.com/lschaffer/mcp_playground/tree/master/mcp_playground_dart
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  universal_io: ^2.3.1
+  http: ^1.2.1
+  uuid: ^4.5.3
+  openai_dart: ^7.0.0
+  anthropic_sdk_dart: ^5.0.0
+  ollama_dart: ^2.3.0
+  googleai_dart: ^8.0.0
+  path: ^1.9.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^6.0.0

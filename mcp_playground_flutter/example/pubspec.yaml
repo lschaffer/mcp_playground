@@ -1,0 +1,33 @@
+name: mcp_playground_flutter_example
+description: "A consolidated showcase demonstrating both Lite and UI integration styles."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mcp_playground_flutter:
+    path: ../
+  mcp_playground_dart:
+    path: ../../mcp_playground_dart
+  mcp_playground_shared_tools:
+    path: shared_tools
+  http: ^1.2.1
+  dartssh2: ^2.18.0
+  mime: ^2.0.0
+  fl_chart: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
