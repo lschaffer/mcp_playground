@@ -1,3 +1,9 @@
+## 0.1.1
+
+- Fixed WASM and Web compilation by integrating `universal_io` for subprocess/file wrappers.
+- Added pure Dart `McpChangeNotifier` to core clients to remove Flutter dependencies.
+- Added comprehensive self-contained package example for pub.dev.
+
 ## 0.1.0
 
 - Initial release of the pure-Dart core package.

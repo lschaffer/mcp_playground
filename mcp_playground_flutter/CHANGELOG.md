@@ -1,3 +1,8 @@
+## 0.1.1
+
+* Bumped version to 0.1.1 for monorepo separation release alignment.
+* Fixed WASM compatibility by replacing direct `dart:io` imports with `universal_io`.
+
 ## 0.1.0
 
 * Restructured the monorepo, splitting package contents into a pure-Dart core package (`mcp_playground_dart`) and a Flutter widget library package (`mcp_playground_flutter`) residing side-by-side to enable clean publication to pub.dev.
