@@ -8,7 +8,7 @@ Future<void> _loadEnv() async {
     // Check local directory and parent directories for .env
     var dir = Directory.current;
     File? envFile;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
       final file = File('${dir.path}/.env');
       if (await file.exists()) {
         envFile = file;

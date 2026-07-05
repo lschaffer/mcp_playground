@@ -8,15 +8,10 @@ Future<void> _loadEnv() async {
     var dir = Directory.current;
     File? envFile;
     // Walk up to find .env file
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       final file = File('${dir.path}/.env');
       if (await file.exists()) {
         envFile = file;
-        break;
-      }
-      final flutterEnv = File('${dir.path}/mcp_playground_flutter/example/.env');
-      if (await flutterEnv.exists()) {
-        envFile = flutterEnv;
         break;
       }
       dir = dir.parent;
