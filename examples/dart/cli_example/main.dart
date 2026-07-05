@@ -222,7 +222,7 @@ Future<void> main(List<String> args) async {
         }
       });
 
-      await engine.run(agent.key);
+      await engine.run(agent.key, mcpManager: mcpManager);
       await subscription.cancel();
     } catch (e) {
       print('ERROR: $e');
@@ -252,6 +252,38 @@ Future<void> main(List<String> args) async {
 // ═══════════════════════════════════════════════════════════════
 // Config loaders
 // ═══════════════════════════════════════════════════════════════
+
+/// Cached env vars loaded from .env file.
+Map<String, String>? _dotEnvCache;
+
+/// Load .env file from the current directory (or walk up to find it).
+Map<String, String> _loadDotEnv() {
+  if (_dotEnvCache != null) return _dotEnvCache!;
+
+  final env = <String, String>{};
+  try {
+    // Walk up from current directory to find .env
+    var dir = Directory.current;
+    for (int i = 0; i < 5; i++) {
+      final envFile = File('${dir.path}/.env');
+      if (envFile.existsSync()) {
+        for (final line in envFile.readAsLinesSync()) {
+          final trimmed = line.trim();
+          if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+          final eq = trimmed.indexOf('=');
+          if (eq == -1) continue;
+          final key = trimmed.substring(0, eq).trim();
+          final val = trimmed.substring(eq + 1).trim();
+          env[key] = val;
+        }
+        break;
+      }
+      dir = dir.parent;
+    }
+  } catch (_) {}
+  _dotEnvCache = env;
+  return env;
+}
 
 /// Load LlmConfig from a YAML file with ${ENV_VAR} substitution.
 LlmConfig? _loadLlmConfig(String path) {
@@ -347,12 +379,14 @@ List<McpServerConfig> _loadMcpServers(String path) {
   }
 }
 
-/// Replace ${VAR_NAME} with environment variable values.
+/// Replace ${VAR_NAME} with values from .env file first, then system env vars.
 String _substituteEnv(String input) {
+  final dotEnv = _loadDotEnv();
   final envPattern = RegExp(r'\$\{([^}]+)\}');
   return input.replaceAllMapped(envPattern, (m) {
     final varName = m.group(1)!;
-    return Platform.environment[varName] ?? '';
+    // .env file takes priority over system environment
+    return dotEnv[varName] ?? Platform.environment[varName] ?? '';
   });
 }
 

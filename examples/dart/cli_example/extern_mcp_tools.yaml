@@ -1,15 +1,15 @@
 # ── External MCP Tools (Node.js / Python subprocesses) ──────────
 # Desktop only — requires Node.js 18+ or Python 3 + uv on PATH.
 #
-# servers:
-#   - id: filesystem
-#     name: Filesystem
-#     url: C:\temp               # args passed to the server
-#     is_local: true
-#     local_type: nodejs         # nodejs | python
-#     local_install_method: npx  # npx | npm | uvx | pip
-#     local_package: "@modelcontextprotocol/server-filesystem"
-#     enabled: true
+servers:
+   - id: filesystem
+     name: Filesystem
+     url: C:\temp               # args passed to the server
+     is_local: true
+     local_type: nodejs         # nodejs | python
+     local_install_method: npx  # npx | npm | uvx | pip
+     local_package: "@modelcontextprotocol/server-filesystem"
+     enabled: true
 #
 #   - id: git
 #     name: Git
@@ -20,4 +20,4 @@
 #     local_package: mcp-server-git
 #     enabled: false
 
-servers: []
+#servers: []

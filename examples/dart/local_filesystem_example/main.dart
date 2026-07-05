@@ -44,7 +44,9 @@ Future<void> main() async {
       await File('C:\\temp\\small.txt').writeAsString('Hello');
       await File('C:\\temp\\medium.log').writeAsString('A' * 1024); // 1 KB
       await File('C:\\temp\\large.bin').writeAsString('B' * 10240); // 10 KB
-      await File('C:\\temp\\exclude.hex').writeAsString('C' * 50000); // Should be excluded
+      await File(
+        'C:\\temp\\exclude.hex',
+      ).writeAsString('C' * 50000); // Should be excluded
       await File('C:\\temp\\huge.db').writeAsString('D' * 102400); // 100 KB
     } catch (e) {
       print('Warning: Failed to setup dummy files in C:\\temp: $e');
@@ -64,7 +66,11 @@ Future<void> main() async {
 
   final model = _env['LLM_MODEL'] ?? 'gpt-4o-mini';
   final url = _env['LLM_URL'] ?? '';
-  final apiKey = _env['LLM_API_KEY'] ?? _env['LLM_KEY'] ?? Platform.environment['OPENAI_API_KEY'] ?? 'your-openai-api-key';
+  final apiKey =
+      _env['LLM_API_KEY'] ??
+      _env['LLM_KEY'] ??
+      Platform.environment['OPENAI_API_KEY'] ??
+      'your-openai-api-key';
 
   final llmConfig = LlmConfig(
     provider: provider,
@@ -91,10 +97,12 @@ Future<void> main() async {
     key: 'filesystem_agent',
     name: 'Filesystem Inspector',
     llmConfig: llmConfig,
-    systemPrompt: 'You are an agent with access to the local filesystem. Find, list, and sort files as requested.',
+    systemPrompt:
+        'You are an agent with access to the local filesystem. Find, list, and sort files as requested.',
     prompts: [
       const SubPromptStep(
-        text: 'list files except .hex with sizes in c:\\temp sort by size desc show the first 5',
+        text:
+            'list files except .hex with sizes in c:\\projects\ls\mobile_ai_agents sort by size desc show the first 5',
       ),
     ],
     localServers: [filesystemServer],
@@ -111,7 +119,9 @@ Future<void> main() async {
       if (event is AgentLogEvent) {
         print('[LOG] ${event.message}');
       } else if (event is AgentToolResultEvent) {
-        print('[TOOL RESULT] ${event.toolName} returned ${event.result.length} characters.');
+        print(
+          '[TOOL RESULT] ${event.toolName} returned ${event.result.length} characters.',
+        );
       } else if (event is AgentAssistantResultEvent) {
         print('[ASSISTANT RESPONSE] ${event.response}');
       } else if (event is AgentFinalResultEvent) {

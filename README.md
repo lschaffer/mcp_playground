@@ -31,6 +31,5 @@ We provide several example applications showcasing both UI and headless integrat
 
 Watch the Flutter UI Playground executing terminal SSH tasks and charting stats:
 
-![Tealkit MCP Demo](mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif)
+![SSH MCP Demo](./mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif)
 
-*(A high-quality animation is also included in the repository under [`mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif`](mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif))*

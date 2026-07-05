@@ -246,6 +246,7 @@ class McpAgentEngine {
     AssistantResultCallback? onAssistantResult,
     ErrorCallback? onError,
     FinalResultCallback? onFinalResult,
+    MultiMCPManager? mcpManager,
   }) async {
     return await _executeAgent(
       agentKey,
@@ -254,6 +255,7 @@ class McpAgentEngine {
       onAssistantResult: onAssistantResult,
       onError: onError,
       onFinalResult: onFinalResult,
+      externalMcpManager: mcpManager,
     );
   }
 
@@ -266,6 +268,7 @@ class McpAgentEngine {
     AssistantResultCallback? onAssistantResult,
     ErrorCallback? onError,
     FinalResultCallback? onFinalResult,
+    MultiMCPManager? mcpManager,
   }) {
     unawaited(
       _executeAgent(
@@ -275,6 +278,7 @@ class McpAgentEngine {
         onAssistantResult: onAssistantResult,
         onError: onError,
         onFinalResult: onFinalResult,
+        externalMcpManager: mcpManager,
       ),
     );
     return agentEvents;
@@ -289,6 +293,7 @@ class McpAgentEngine {
     AssistantResultCallback? onAssistantResult,
     ErrorCallback? onError,
     FinalResultCallback? onFinalResult,
+    MultiMCPManager? externalMcpManager,
   }) async {
     final agent = _agents[agentKey];
     if (agent == null) {
@@ -305,8 +310,12 @@ class McpAgentEngine {
 
     try {
       // ── Set up MCP manager ──────────────────────────────
-      final mcpManager = MultiMCPManager();
-      _mcpManagers[agentKey] = mcpManager;
+      final mcpManager = externalMcpManager ?? MultiMCPManager();
+      if (externalMcpManager == null) {
+        _mcpManagers[agentKey] = mcpManager;
+      }
+
+      if (externalMcpManager == null) {
 
       // Connect remote servers
       for (final server in agent.remoteServers) {
@@ -377,6 +386,7 @@ class McpAgentEngine {
             'Warning: Could not connect to local MCP server "${server.name}": $e',
           );
         }
+      }
       }
 
       // ── Build full tool list ────────────────────────────

@@ -216,7 +216,7 @@ class LocalMCPClient extends MCPClient {
       'jsonrpc': '2.0',
       'id': id,
       'method': method,
-      'params':? params,
+      'params': ?params,
     };
 
     final completer = Completer<Map<String, dynamic>>();
@@ -481,7 +481,7 @@ class LocalMcpRuntime {
     final shellResolved = await _resolveViaShell('uvx');
     final candidates = Platform.isWindows
         ? ['uvx.exe', 'uvx']
-        : [if (shellResolved != null) shellResolved, ..._unixCandidates('uvx')];
+        : [?shellResolved, ..._unixCandidates('uvx')];
     for (final exe in candidates) {
       try {
         final result = await Process.run(exe, [
@@ -497,10 +497,7 @@ class LocalMcpRuntime {
     final shellResolved = await _resolveViaShell('node');
     final candidates = Platform.isWindows
         ? ['node.exe', 'node']
-        : [
-            if (shellResolved != null) shellResolved,
-            ..._unixCandidates('node'),
-          ];
+        : [?shellResolved, ..._unixCandidates('node')];
     for (final exe in candidates) {
       try {
         final result = await Process.run(exe, [
@@ -526,8 +523,8 @@ class LocalMcpRuntime {
     final candidates = Platform.isWindows
         ? ['python', 'python3']
         : [
-            if (shellResolvedPy3 != null) shellResolvedPy3,
-            if (shellResolvedPy != null) shellResolvedPy,
+            ?shellResolvedPy3,
+            ?shellResolvedPy,
             'python3',
             'python',
             '/usr/local/bin/python3',

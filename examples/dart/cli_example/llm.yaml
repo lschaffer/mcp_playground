@@ -3,9 +3,11 @@
 #
 # provider: openai | claude | gemini | ollama | mistral | openai_compatible
 
-provider: openai
-model: gpt-4o-mini
-api_key: ${OPENAI_API_KEY}
+provider: ${LLM_PROVIDER}
+model: ${LLM_MODEL}
+base_url: ${LLM_URL}
+api_key: ${LLM_API_KEY}
+temperature: 0.2
 
 # base_url: ""               # Only needed for Ollama / custom OpenAI-compatible
 # temperature: 0.2
