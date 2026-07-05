@@ -22,7 +22,6 @@ We provide several example applications showcasing both UI and headless integrat
 * **[Embedded LLM Showcase](examples/flutter/example_embedded)**: A Flutter application pre-configured to run with a local on-device embedded LLM (`llamadart`) with zero external network dependencies.
 
 ### 💻 Dart (Headless CLI) Examples
-* **[Standard CLI Agent](mcp_playground_dart/example)**: A simple command-line agent showing how to run local Dart-native tools asynchronously and listen to execution events via a stream.
 * **[Local Filesystem Inspector](examples/dart/local_filesystem_example)**: A headless agent configured to install and run the official `@modelcontextprotocol/server-filesystem` Node.js server via NPX to inspect and sort local files.
   
   ![Local Filesystem Inspector Screenshot](./screenshots/example_dart/local_filsystem_test.png)
