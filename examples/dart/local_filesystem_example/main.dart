@@ -78,12 +78,11 @@ Future<void> main() async {
   final filesystemServer = McpServerConfig(
     id: 'filesystem',
     name: 'Filesystem',
-    url: 'http://localhost/local-mcp-filesystem', // dummy url
+    url: 'C:\\temp',
     isLocal: true,
     localType: 'nodejs',
     localInstallMethod: 'npx',
     localPackage: '@modelcontextprotocol/server-filesystem',
-    localCommand: 'C:\\temp',
     enabled: true,
   );
 

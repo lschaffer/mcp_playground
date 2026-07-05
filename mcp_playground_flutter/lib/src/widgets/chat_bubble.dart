@@ -493,25 +493,56 @@ class ChatBubble extends StatelessWidget {
     try {
       final decoded = jsonDecode(text.trim());
       if (decoded is Map) {
-        final content = decoded['content'] ?? decoded['data'];
-        final fileName = decoded['fileName'] ?? decoded['filename'];
-        final mimeType = decoded['mimeType'] ?? decoded['mimetype'] ?? 'application/octet-stream';
-        
-        if (content is String && fileName is String && _looksLikeBase64String(content.trim().replaceAll(RegExp(r'\s+'), ''))) {
-          embeddedFile = {
-            'content': content.trim().replaceAll(RegExp(r'\s+'), ''),
-            'fileName': fileName,
-            'mimeType': mimeType.toString(),
-          };
-          
-          // Create a copy and remove content/data keys to hide the base64 string in the UI
-          final cleanMap = Map<String, dynamic>.from(decoded);
-          cleanMap.remove('content');
-          cleanMap.remove('data');
-          
-          if (cleanMap.isEmpty || (cleanMap.length == 2 && cleanMap.containsKey('fileName') && cleanMap.containsKey('mimeType'))) {
-            strippedText = '';
-          } else {
+        String? content;
+        String? fileName;
+        String? mimeType;
+
+        // Try extracting from root level
+        final rootContent = decoded['content'] ?? decoded['data'] ?? decoded['bytes'] ?? decoded['base64'] ?? decoded['fileContent'];
+        if (rootContent is String) {
+          content = rootContent;
+        }
+        fileName = decoded['fileName']?.toString() ?? decoded['filename']?.toString();
+        mimeType = decoded['mimeType']?.toString() ?? decoded['mimetype']?.toString();
+
+        // If not found, try extracting from nested 'data' or other map values
+        final dataVal = decoded['data'];
+        if (dataVal is Map) {
+          final nestedContent = dataVal['content'] ?? dataVal['bytes'] ?? dataVal['base64'] ?? dataVal['fileContent'] ?? dataVal['data'];
+          if (nestedContent is String) {
+            content = nestedContent;
+          }
+          fileName ??= dataVal['fileName']?.toString() ?? dataVal['filename']?.toString();
+          mimeType ??= dataVal['mimeType']?.toString() ?? dataVal['mimetype']?.toString();
+        }
+
+        // Search recursively/flatly if still missing
+        if (content == null || fileName == null) {
+          for (final entry in decoded.entries) {
+            final val = entry.value;
+            if (val is Map) {
+              final possibleContent = val['content'] ?? val['bytes'] ?? val['base64'] ?? val['fileContent'] ?? val['data'];
+              if (possibleContent is String && _looksLikeBase64String(possibleContent.trim().replaceAll(RegExp(r'\s+'), ''))) {
+                content = possibleContent;
+                fileName ??= val['fileName']?.toString() ?? val['filename']?.toString();
+                mimeType ??= val['mimeType']?.toString() ?? val['mimetype']?.toString();
+              }
+            }
+          }
+        }
+
+        if (content != null && fileName != null) {
+          final cleanContent = content.trim().replaceAll(RegExp(r'\s+'), '');
+          if (_looksLikeBase64String(cleanContent)) {
+            mimeType ??= 'application/octet-stream';
+            embeddedFile = {
+              'content': cleanContent,
+              'fileName': fileName,
+              'mimeType': mimeType,
+            };
+
+            // Clone and strip the huge base64 content
+            final cleanMap = _cloneAndStripBase64(decoded);
             strippedText = const JsonEncoder.withIndent('  ').convert(cleanMap);
           }
         } else {
@@ -755,6 +786,29 @@ class ChatBubble extends StatelessWidget {
         }
       }
       return nextList.isEmpty ? null : nextList;
+    }
+    return val;
+  }
+
+  dynamic _cloneAndStripBase64(dynamic val) {
+    if (val is String) {
+      final clean = val.trim().replaceAll(RegExp(r'\s+'), '');
+      if (clean.length > 100 && _looksLikeBase64String(clean)) {
+        return '[Base64 Content]';
+      }
+      return val;
+    } else if (val is Map) {
+      final nextMap = <String, dynamic>{};
+      for (final entry in val.entries) {
+        nextMap[entry.key.toString()] = _cloneAndStripBase64(entry.value);
+      }
+      return nextMap;
+    } else if (val is List) {
+      final nextList = [];
+      for (final item in val) {
+        nextList.add(_cloneAndStripBase64(item));
+      }
+      return nextList;
     }
     return val;
   }
