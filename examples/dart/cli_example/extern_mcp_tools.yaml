@@ -4,7 +4,7 @@
 servers:
    - id: filesystem
      name: Filesystem
-     url: C:\temp               # args passed to the server
+     url: C:\           # args passed to the server
      is_local: true
      local_type: nodejs         # nodejs | python
      local_install_method: npx  # npx | npm | uvx | pip

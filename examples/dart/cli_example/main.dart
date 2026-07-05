@@ -68,18 +68,22 @@ Future<void> main(List<String> args) async {
   final localServers = _loadMcpServers(toolsPath);
 
   // ── Welcome banner ───────────────────────────────────────────
+  void printBoxLine(String content) {
+    const innerWidth = 56;
+    final paddedContent = content.padRight(innerWidth);
+    print('║$paddedContent║');
+  }
+
   print('');
   print('╔══════════════════════════════════════════════════════════╗');
-  print('║              MCP CLI — Interactive Agent                ║');
+  printBoxLine('              MCP CLI — Interactive Agent');
   print('╠══════════════════════════════════════════════════════════╣');
-  print('║ Provider : ${llmConfig.provider.displayName.padRight(44)}║');
-  print('║ Model    : ${llmConfig.model.padRight(44)}║');
+  printBoxLine(' Provider : ${llmConfig.provider.displayName}');
+  printBoxLine(' Model    : ${llmConfig.model}');
   if (localServers.isNotEmpty) {
-    print(
-      '║ MCP tools: ${localServers.length} server(s)${''.padRight(34 - localServers.length.toString().length - 10)}║',
-    );
+    printBoxLine(' MCP tools: ${localServers.length} server(s)');
   }
-  print('║ Type /bye to exit, /help for commands                  ║');
+  printBoxLine(' Type /bye to exit, /help for commands');
   print('╚══════════════════════════════════════════════════════════╝');
   print('');
 
