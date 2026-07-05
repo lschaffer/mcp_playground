@@ -166,6 +166,7 @@ class LocalMCPClient extends MCPClient {
       final initializedEnvelope = {
         'jsonrpc': '2.0',
         'method': 'notifications/initialized',
+        'params': {},
       };
       _process!.stdin.writeln(jsonEncode(initializedEnvelope));
       await _process!.stdin.flush();
@@ -215,7 +216,7 @@ class LocalMCPClient extends MCPClient {
       'jsonrpc': '2.0',
       'id': id,
       'method': method,
-      'params': params,
+      'params':? params,
     };
 
     final completer = Completer<Map<String, dynamic>>();

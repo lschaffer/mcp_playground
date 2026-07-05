@@ -1,5 +1,5 @@
 import 'package:mcp_playground_dart/mcp_playground_dart.dart';
-import 'package:universal_io/io.dart';
+import 'dart:io';
 
 final Map<String, String> _env = {};
 
