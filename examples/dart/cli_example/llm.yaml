@@ -1,0 +1,18 @@
+# ── LLM Configuration ───────────────────────────────────────────
+# Values support ${ENV_VAR} substitution for secrets.
+#
+# provider: openai | claude | gemini | ollama | mistral | openai_compatible
+
+provider: openai
+model: gpt-4o-mini
+api_key: ${OPENAI_API_KEY}
+
+# base_url: ""               # Only needed for Ollama / custom OpenAI-compatible
+# temperature: 0.2
+# max_tokens: 0              # 0 = no limit
+# top_p: null
+# top_k: null
+# seed: null
+
+# System prompt injected into every conversation turn.
+system_prompt: "You are a helpful AI assistant. Use available tools when needed to answer user questions accurately."

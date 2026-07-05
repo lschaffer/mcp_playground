@@ -1,3 +1,10 @@
+## 0.1.2
+
+* Upgraded `mcp_playground_dart` core dependency to `0.1.2`.
+* Added automatic download card rendering for tool output returning base64 binary files (e.g., Excel, PDF) embedded in nested JSON objects.
+* Added tool invocation arguments inside the Inspector log messages stream.
+* Performance and protocol compliance improvements.
+
 ## 0.1.1
 
 * Bumped version to 0.1.1 for monorepo separation release alignment.
