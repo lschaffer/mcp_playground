@@ -1,11 +1,18 @@
 import 'package:mcp_playground_dart/mcp_playground_dart.dart';
+import 'package:universal_io/io.dart';
 
 Future<void> main() async {
-  // 1. Configure the LLM
+  final apiKey = Platform.environment['OPENAI_API_KEY'] ?? 'your-openai-api-key';
+
+  // 1. Configure the LLM with extended hyperparameters
   final llmConfig = LlmConfig(
     provider: LlmProvider.openai,
     model: 'gpt-4o-mini',
-    apiKey: 'your-openai-api-key',
+    apiKey: apiKey,
+    temperature: 0.7,
+    maxTokens: 100,
+    topP: 0.9,
+    topK: 40,
   );
 
   // 2. Define a simple inline Dart-native tool
@@ -31,17 +38,33 @@ Future<void> main() async {
   engine.setAgents([agent]);
 
   try {
-    print('Running agent...');
-    await engine.run(
-      agent.key,
-      onLog: (msg) => print('[LOG] $msg'),
-      onToolResult: (name, params, result) => print('Tool $name returned: $result'),
-      onAssistantResult: (prompt, response) => print('Assistant: $response'),
-      onFinalResult: (response) {
-        print('\n=== FINAL RESPONSE ===');
-        print(response);
-      },
+    print('--- Running Agent asynchronously using Stream ---');
+
+    // Subscribe to the Agent Event Stream reactively
+    final subscription = engine.agentEvents.listen((event) {
+      if (event is AgentLogEvent) {
+        print('[STREAM LOG] ${event.message}');
+      } else if (event is AgentToolResultEvent) {
+        print('[STREAM TOOL] ${event.toolName} returned: ${event.result}');
+      } else if (event is AgentAssistantResultEvent) {
+        print('[STREAM ASSISTANT] ${event.response}');
+      } else if (event is AgentFinalResultEvent) {
+        print('\n=== STREAM FINAL RESPONSE ===');
+        print(event.response);
+      } else if (event is AgentErrorEvent) {
+        print('[STREAM ERROR] ${event.error}');
+      }
+    });
+
+    // Start execution asynchronously (returns the stream)
+    final stream = engine.runAsync(agent.key);
+
+    // Wait for completion (final response or error event)
+    await stream.firstWhere(
+      (event) => event is AgentFinalResultEvent || event is AgentErrorEvent,
     );
+
+    await subscription.cancel();
   } finally {
     await engine.dispose();
   }

@@ -322,6 +322,8 @@ class LLMService {
         tools: anthropicTools.isNotEmpty ? anthropicTools : null,
         temperature: config.temperature,
         maxTokens: config.maxTokens > 0 ? config.maxTokens : 4096,
+        topP: config.topP,
+        topK: config.topK,
       ),
     );
 
@@ -612,6 +614,9 @@ class LLMService {
           temperature: config.temperature,
           numPredict: config.maxTokens > 0 ? config.maxTokens : null,
           seed: config.seed,
+          topP: config.topP,
+          topK: config.topK,
+          repeatPenalty: config.repeatPenalty,
         ),
       ),
     );

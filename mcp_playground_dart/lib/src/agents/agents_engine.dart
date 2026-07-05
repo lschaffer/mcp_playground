@@ -6,8 +6,8 @@ import '../llm/llm_service.dart';
 import '../mcp/local_tools.dart';
 import '../mcp/mcp_client.dart';
 import '../mcp/mcp_client_def.dart';
-import '../mcp/local_mcp_client.dart'
-    if (dart.library.html) '../mcp/local_mcp_client_stub.dart';
+import '../mcp/local_mcp_client_stub.dart'
+    if (dart.library.io) '../mcp/local_mcp_client.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // Agent Status
@@ -257,9 +257,9 @@ class McpAgentEngine {
     );
   }
 
-  /// Execute an agent asynchronously. Returns immediately;
-  /// results are delivered via callbacks or the [agentEvents] stream.
-  void runAsync(
+  /// Execute an agent asynchronously. Returns a [Stream] of [AgentEvent]s immediately.
+  /// Callbacks are also supported.
+  Stream<AgentEvent> runAsync(
     String agentKey, {
     LogCallback? onLog,
     ToolResultCallback? onToolResult,
@@ -267,7 +267,6 @@ class McpAgentEngine {
     ErrorCallback? onError,
     FinalResultCallback? onFinalResult,
   }) {
-    // Fire and forget — errors are surfaced via callbacks
     unawaited(
       _executeAgent(
         agentKey,
@@ -278,6 +277,7 @@ class McpAgentEngine {
         onFinalResult: onFinalResult,
       ),
     );
+    return agentEvents;
   }
 
   // ── Internal Execution ────────────────────────────────────────

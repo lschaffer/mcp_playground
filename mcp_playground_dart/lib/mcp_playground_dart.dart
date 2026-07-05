@@ -13,8 +13,8 @@ export 'src/llm/llm_response.dart';
 export 'src/mcp/mcp_client.dart';
 export 'src/mcp/mcp_client_def.dart';
 export 'src/mcp/local_tools.dart';
-export 'src/mcp/local_mcp_client.dart'
-    if (dart.library.html) 'src/mcp/local_mcp_client_stub.dart';
+export 'src/mcp/local_mcp_client_stub.dart'
+    if (dart.library.io) 'src/mcp/local_mcp_client.dart';
 
 // Agents
 export 'src/agents/agents_engine.dart';
