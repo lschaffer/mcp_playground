@@ -227,6 +227,8 @@ Future<void> main(List<String> args) async {
       });
 
       await engine.run(agent.key, mcpManager: mcpManager);
+      // Give the event loop a brief moment to flush and print all stream events
+      await Future.delayed(const Duration(milliseconds: 100));
       await subscription.cancel();
     } catch (e) {
       print('ERROR: $e');
