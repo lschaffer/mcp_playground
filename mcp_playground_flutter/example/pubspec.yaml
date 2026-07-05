@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
   mcp_playground_flutter:
     path: ../
-  mcp_playground_dart: ^0.1.1
+  mcp_playground_dart:
+    path: ../../mcp_playground_dart
   mcp_playground_shared_tools:
     path: shared_tools
   http: ^1.2.1
