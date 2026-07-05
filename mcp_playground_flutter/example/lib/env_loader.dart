@@ -8,7 +8,10 @@ class EnvLoader {
   static Future<void> load() async {
     String content = '';
     try {
-      final file = File('.env');
+      var file = File('.env');
+      if (!await file.exists()) {
+        file = File('../../.env');
+      }
       if (await file.exists()) {
         content = await file.readAsString();
       }
@@ -16,7 +19,7 @@ class EnvLoader {
 
     if (content.trim().isEmpty) {
       try {
-        content = await rootBundle.loadString('.env');
+        content = await rootBundle.loadString('../../.env');
       } catch (_) {}
     }
 
