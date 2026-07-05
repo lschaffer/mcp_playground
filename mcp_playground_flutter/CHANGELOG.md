@@ -1,3 +1,7 @@
+## 0.1.3
+
+* Upgraded README.md video to a GIF
+
 ## 0.1.2
 
 * Upgraded `mcp_playground_dart` core dependency to `0.1.2`.
