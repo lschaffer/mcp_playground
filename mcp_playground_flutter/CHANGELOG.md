@@ -1,3 +1,7 @@
+## 0.1.4
+
+* Upgraded README.md video to embedded test GIF
+
 ## 0.1.3
 
 * Upgraded README.md video to a GIF

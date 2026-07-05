@@ -22,9 +22,9 @@ An interactive AI Agent Playground widget for Flutter — connect to any LLM pro
 
 ## 🎥 Demo
 
-Watch the AI Agent Playground in action executing SSH commands and generating charts:
+Watch the AI Agent Playground in action using embedded model to call local dart tools:
 
-![Tealkit MCP Demo](https://raw.githubusercontent.com/lschaffer/mcp_playground/master/screenshots/video/mcp_playground_ssh_chart_test.gif)
+![Tealkit MCP Demo](https://github.com/lschaffer/mcp_playground/blob/main/screenshots/video/mcp_playground_embedded_test.gif)
 
 ---
 
