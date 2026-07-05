@@ -1,0 +1,11 @@
+name: local_filesystem_example
+description: "A pure-Dart CLI example that installs and runs the MCP Node.js filesystem server to list and sort files."
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+  universal_io: ^2.3.1

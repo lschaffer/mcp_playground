@@ -5,13 +5,18 @@ final Map<String, String> _env = {};
 
 Future<void> _loadEnv() async {
   try {
-    // Check local directory and parent directories for .env
     var dir = Directory.current;
     File? envFile;
-    for (int i = 0; i < 3; i++) {
+    // Walk up to find .env file
+    for (int i = 0; i < 4; i++) {
       final file = File('${dir.path}/.env');
       if (await file.exists()) {
         envFile = file;
+        break;
+      }
+      final flutterEnv = File('${dir.path}/mcp_playground_flutter/example/.env');
+      if (await flutterEnv.exists()) {
+        envFile = flutterEnv;
         break;
       }
       dir = dir.parent;
@@ -35,6 +40,23 @@ Future<void> _loadEnv() async {
 Future<void> main() async {
   await _loadEnv();
 
+  // 1. Prepare temp directory for the filesystem tool
+  final tempDir = Directory('C:\\temp');
+  if (!await tempDir.exists()) {
+    try {
+      await tempDir.create(recursive: true);
+      // Create some dummy files to sort
+      await File('C:\\temp\\small.txt').writeAsString('Hello');
+      await File('C:\\temp\\medium.log').writeAsString('A' * 1024); // 1 KB
+      await File('C:\\temp\\large.bin').writeAsString('B' * 10240); // 10 KB
+      await File('C:\\temp\\exclude.hex').writeAsString('C' * 50000); // Should be excluded
+      await File('C:\\temp\\huge.db').writeAsString('D' * 102400); // 100 KB
+    } catch (e) {
+      print('Warning: Failed to setup dummy files in C:\\temp: $e');
+    }
+  }
+
+  // 2. Load LLM credentials
   final providerStr = _env['LLM_PROVIDER']?.toLowerCase() ?? 'openai';
   var provider = LlmProvider.openai;
   if (providerStr == 'claude') provider = LlmProvider.claude;
@@ -49,63 +71,67 @@ Future<void> main() async {
   final url = _env['LLM_URL'] ?? '';
   final apiKey = _env['LLM_API_KEY'] ?? _env['LLM_KEY'] ?? Platform.environment['OPENAI_API_KEY'] ?? 'your-openai-api-key';
 
-  // 1. Configure the LLM with extended hyperparameters
   final llmConfig = LlmConfig(
     provider: provider,
     model: model,
     apiKey: apiKey,
     baseUrl: url,
-    temperature: 0.7,
-    maxTokens: 100,
-    topP: 0.9,
-    topK: 40,
+    temperature: 0.2,
   );
 
-  // 2. Define a simple inline Dart-native tool
-  final timeTool = GetCurrentTimeTool();
+  // 3. Define the Local Filesystem MCP server setup
+  final filesystemServer = McpServerConfig(
+    id: 'filesystem',
+    name: 'Filesystem',
+    url: 'http://localhost/local-mcp-filesystem', // dummy url
+    isLocal: true,
+    localType: 'nodejs',
+    localInstallMethod: 'npx',
+    localPackage: '@modelcontextprotocol/server-filesystem',
+    localCommand: 'C:\\temp',
+    enabled: true,
+  );
 
-  // 3. Create the Agent configuration
+  // 4. Create the Agent configuration
   final agent = Agent(
-    key: 'time_agent',
-    name: 'Time Expert',
+    key: 'filesystem_agent',
+    name: 'Filesystem Inspector',
     llmConfig: llmConfig,
-    systemPrompt: 'You are a helpful assistant with access to local tools.',
+    systemPrompt: 'You are an agent with access to the local filesystem. Find, list, and sort files as requested.',
     prompts: [
       const SubPromptStep(
-        text: 'What is the current time?',
-        enabledToolNames: ['get_current_time'],
+        text: 'list files except .hex with sizes in c:\\temp sort by size desc show the first 5',
       ),
     ],
-    dartTools: [timeTool],
+    localServers: [filesystemServer],
   );
 
-  // 4. Create the execution engine and run the Agent
+  // 5. Initialize the execution engine
   final engine = McpAgentEngine();
   engine.setAgents([agent]);
 
   try {
-    print('--- Running Agent asynchronously using Stream ---');
+    print('Starting Filesystem Agent execution using stream events...');
 
-    // Subscribe to the Agent Event Stream reactively
     final subscription = engine.agentEvents.listen((event) {
       if (event is AgentLogEvent) {
-        print('[STREAM LOG] ${event.message}');
+        print('[LOG] ${event.message}');
       } else if (event is AgentToolResultEvent) {
-        print('[STREAM TOOL] ${event.toolName} returned: ${event.result}');
+        print('[TOOL RESULT] ${event.toolName} returned ${event.result.length} characters.');
       } else if (event is AgentAssistantResultEvent) {
-        print('[STREAM ASSISTANT] ${event.response}');
+        print('[ASSISTANT RESPONSE] ${event.response}');
       } else if (event is AgentFinalResultEvent) {
-        print('\n=== STREAM FINAL RESPONSE ===');
+        print('\n=== FINAL RESULT ===');
         print(event.response);
       } else if (event is AgentErrorEvent) {
-        print('[STREAM ERROR] ${event.error}');
+        print('[ERROR] ${event.error}');
       }
     });
 
-    // Start execution asynchronously (returns the stream)
+    // Run agent
     final stream = engine.runAsync(agent.key);
 
-    // Wait for completion (final response or error event)
+    // Wait for the agent to finish
     await stream.firstWhere(
       (event) => event is AgentFinalResultEvent || event is AgentErrorEvent,
     );
@@ -113,27 +139,5 @@ Future<void> main() async {
     await subscription.cancel();
   } finally {
     await engine.dispose();
-  }
-}
-
-class GetCurrentTimeTool extends McpLocalTool {
-  @override
-  String get name => 'get_current_time';
-
-  @override
-  String get description => 'Returns the current local time.';
-
-  @override
-  Map<String, dynamic> get inputSchema => {
-    'type': 'object',
-    'properties': {},
-  };
-
-  @override
-  Future<MCPToolResult> execute(Map<String, dynamic> arguments) async {
-    final now = DateTime.now().toLocal().toString();
-    return MCPToolResult(
-      content: [MCPContent(type: 'text', text: 'Current local time is $now')],
-    );
   }
 }

@@ -24,9 +24,9 @@ An interactive AI Agent Playground widget for Flutter — connect to any LLM pro
 
 Watch the AI Agent Playground in action executing SSH commands and generating charts:
 
-<video src="../screenshots/video/mcp_playground_chart_test.gif" width="100%" controls></video>
+![Tealkit MCP Demo](https://raw.githubusercontent.com/lschaffer/mcp_playground/master/screenshots/video/mcp_playground_chart_test.gif)
 
-*(If the video doesn't play, you can watch/download it directly [here](../screenshots/video/mcp_playground_ssh_chart_test.mp4))*
+*(If the video doesn't play, you can watch/download it directly [here](https://github.com/lschaffer/mcp_playground/raw/master/screenshots/video/mcp_playground_ssh_chart_test.mp4))*
 
 ---
 
@@ -55,11 +55,11 @@ The main widget. Drop it into your app to get a full AI playground UI.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `initialLlmConfig` | [`LlmConfig?`](../mcp_playground_dart/lib/src/models/models.dart) | `null` | Default LLM provider, model, API key, and hyperparameters. Falls back to persisted settings. |
+| `initialLlmConfig` | [`LlmConfig?`](https://github.com/lschaffer/mcp_playground/blob/master/mcp_playground_dart/lib/src/models/models.dart) | `null` | Default LLM provider, model, API key, and hyperparameters. Falls back to persisted settings. |
 | `initialServers` | `List<McpServerConfig>?` | `null` | Pre-configured list of HTTP MCP servers to connect to on startup. |
 | `initialLocalMcpServers` | `List<LocalMcpServerSetup>?` | `null` | Pre-configured list of local Node.js or Python MCP servers to auto-initialize/install. |
 | `storageDelegate` | `McpPlaygroundStorageDelegate?` | `null` | Custom persistence layer for settings. Uses `SharedPreferences` if omitted. |
-| `customLocalTools` | `List<McpLocalTool>?` | `null` | Custom Dart-native tool implementations. See [`McpLocalTool`](../mcp_playground_dart/lib/src/mcp/local_tools.dart). |
+| `customLocalTools` | `List<McpLocalTool>?` | `null` | Custom Dart-native tool implementations. See [`McpLocalTool`](https://github.com/lschaffer/mcp_playground/blob/master/mcp_playground_dart/lib/src/mcp/local_tools.dart). |
 | `disableConfigDialog` | `bool` | `false` | Disable opening the settings dialog when LLM is not configured. |
 | `messageContentBuilder` | `Widget? Function(BuildContext, ChatMessage)?` | `null` | Optional builder callback to intercept message layouts and render custom widgets (e.g., interactive charts). |
 | `locale` | `String?` | `null` | Optional explicit locale override ('en' or 'de'). Defaults to system language. |
