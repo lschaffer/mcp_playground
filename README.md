@@ -36,5 +36,5 @@ We provide several example applications showcasing both UI and headless integrat
 
 Watch the Flutter UI Playground executing terminal SSH tasks and charting stats:
 
-![SSH MCP Demo](./mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif)
+![SSH MCP Demo](./screenshots/video/mcp_playground_ssh_chart_test.gif)
 
