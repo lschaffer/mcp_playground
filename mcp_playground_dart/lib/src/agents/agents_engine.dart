@@ -675,8 +675,9 @@ class McpAgentEngine {
             );
             messages.add(callMsg);
             stepNewMsgs.add(callMsg);
-            _eventController.add(AgentLogEvent('Calling tool: ${call.name}'));
-            onLog?.call('Calling tool: ${call.name}');
+            final logMessage = 'Calling tool: ${call.name} with args: ${jsonEncode(call.arguments)}';
+            _eventController.add(AgentLogEvent(logMessage));
+            onLog?.call(logMessage);
 
             // Execute tool
             MCPToolResult result;
