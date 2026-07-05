@@ -24,7 +24,12 @@ We provide several example applications showcasing both UI and headless integrat
 ### 💻 Dart (Headless CLI) Examples
 * **[Standard CLI Agent](mcp_playground_dart/example)**: A simple command-line agent showing how to run local Dart-native tools asynchronously and listen to execution events via a stream.
 * **[Local Filesystem Inspector](examples/dart/local_filesystem_example)**: A headless agent configured to install and run the official `@modelcontextprotocol/server-filesystem` Node.js server via NPX to inspect and sort local files.
+  
+  ![Local Filesystem Inspector Screenshot](./screenshots/example_dart/local_filsystem_test.png)
+
 * **[Interactive CLI Chat Agent](examples/dart/cli_example)**: An interactive command-line interface loaded dynamically via configurations, allowing you to have a multi-turn chat conversation with LLMs using local Node/Python subprocess MCP tools.
+
+  ![Interactive CLI Chat Agent Screenshot](./screenshots/example_dart/cli_filesystem_test.png)
 
 ---
 
@@ -33,8 +38,4 @@ We provide several example applications showcasing both UI and headless integrat
 Watch the Flutter UI Playground executing terminal SSH tasks and charting stats:
 
 ![SSH MCP Demo](./mcp_playground_flutter/screenshots/video/mcp_playground_ssh_chart_test.gif)
-
-Here is the headless **Interactive CLI Chat Agent** executing local filesystem searches:
-
-![CLI Filesystem Inspector](./screenshots/example_dart/cli_filesystem_test.png)
 
