@@ -1,3 +1,10 @@
+## 0.1.2
+
+- Expose `agentEvents` stream in `McpAgentEngine` and return a reactive event stream from `runAsync` for asynchronous streaming execution.
+- Add support for loading `LlmConfig` hyperparameters (`temperature`, `maxTokens`, `topP`, `topK`, `repeatPenalty`) inside provider clients.
+- Isolate local stdio client dependencies from web/wasm builds via default stub conditional imports.
+- Protocol and logging compliance updates.
+
 ## 0.1.1
 
 - Fixed WASM and Web compilation by integrating `universal_io` for subprocess/file wrappers.
