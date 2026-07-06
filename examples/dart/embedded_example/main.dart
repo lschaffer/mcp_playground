@@ -411,7 +411,7 @@ Future<void> main() async {
       fullModelPath,
       modelParams: ModelParams(
         contextSize: 2048,
-        gpuLayers: 0, // Force CPU execution to prevent Vulkan/GPU Out-Of-Memory errors
+        gpuLayers: 0, // Force CPU execution on Windows. Set to ModelParams.maxGpuLayers to use Metal GPU on macOS.
       ),
     );
     print('Model successfully loaded!');
