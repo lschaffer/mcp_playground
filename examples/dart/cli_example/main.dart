@@ -223,6 +223,8 @@ Future<void> main(List<String> args) async {
             print('');
           case AgentFinalResultEvent():
             break; // handled separately
+          case AgentTextChunkEvent():
+            break;
         }
       });
 

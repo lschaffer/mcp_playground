@@ -1,0 +1,10 @@
+# Configuration for the Embedded Dart Example
+
+# Storage directory for GGUF model files.
+# Default: users/$user/.models (on Windows C:\Users\<user>\.models, on macOS/Linux ~/.models)
+# You can override this to an absolute path if desired.
+model_dir: ""
+
+# Hugging Face Repository details and download URL
+model_url: "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+model_name: "Qwen2.5-3B-Instruct-Q4_K_M.gguf"

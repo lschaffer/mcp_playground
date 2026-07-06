@@ -59,6 +59,7 @@ class McpPlaygroundScreen extends StatelessWidget {
       provider: LlmProvider.embedded,
       model: 'ministral3-3b-instruct q4',
       apiKey: '',
+      useStreaming: true,
     );
 
     return Scaffold(

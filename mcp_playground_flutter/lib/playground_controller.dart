@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mcp_playground_dart/mcp_playground_dart.dart';
 import 'src/utils/mime_utils.dart';
+import 'src/services/embedded_llm/embedded_llm_adapter.dart';
 
 /// Abstract delegate for storing and loading LLM configuration, server registry, and saved setups.
 abstract class McpPlaygroundStorageDelegate {
@@ -287,6 +288,7 @@ class PlaygroundController extends ChangeNotifier {
     if (customLocalTools != null) {
       _localTools.addAll(customLocalTools);
     }
+    _registerEmbeddedLlmHandlers();
     _mcpManager.addListener(notifyListeners);
     _initAndLoad();
   }
@@ -390,6 +392,96 @@ class PlaygroundController extends ChangeNotifier {
   }
 
   List<MCPTool> get externalTools => _mcpManager.availableTools;
+
+  static void _registerEmbeddedLlmHandlers() {
+    LLMService.embeddedHandler = ({
+      required LlmConfig config,
+      required List<ChatMessage> messages,
+      required List<MCPTool> tools,
+      String? systemPrompt,
+    }) async {
+      final combinedMessages = <ChatMessage>[];
+      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+        combinedMessages.add(
+          ChatMessage(
+            id: 'system_prompt',
+            content: systemPrompt,
+            role: ChatRole.system,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
+      combinedMessages.addAll(messages);
+
+      return await EmbeddedLlmAdapter.instance.generateResponse(
+        messages: combinedMessages,
+        availableTools: tools,
+        temperature: config.temperature,
+        maxTokens: config.maxTokens > 0 ? config.maxTokens : 1024,
+        topK: config.topK ?? 40,
+        topP: config.topP ?? 0.9,
+        penalty: config.repeatPenalty ?? 1.15,
+      );
+    };
+
+    LLMService.embeddedStreamHandler = ({
+      required LlmConfig config,
+      required List<ChatMessage> messages,
+      required List<MCPTool> tools,
+      String? systemPrompt,
+    }) {
+      final controller = StreamController<LLMStreamChunk>();
+
+      final combinedMessages = <ChatMessage>[];
+      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+        combinedMessages.add(
+          ChatMessage(
+            id: 'system_prompt',
+            content: systemPrompt,
+            role: ChatRole.system,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
+      combinedMessages.addAll(messages);
+
+      // Run in the background
+      runZonedGuarded(() async {
+        try {
+          final response = await EmbeddedLlmAdapter.instance.generateResponse(
+            messages: combinedMessages,
+            availableTools: tools,
+            temperature: config.temperature,
+            maxTokens: config.maxTokens > 0 ? config.maxTokens : 1024,
+            topK: config.topK ?? 40,
+            topP: config.topP ?? 0.9,
+            penalty: config.repeatPenalty ?? 1.15,
+            onStreamChunk: (textChunk) {
+              controller.add(LLMStreamChunk(textDelta: textChunk));
+            },
+          );
+          controller.add(
+            LLMStreamChunk(
+              textDelta: '',
+              isDone: true,
+              finalResponse: response,
+            ),
+          );
+          await controller.close();
+        } catch (e, st) {
+          controller.addError(e, st);
+          await controller.close();
+        }
+      }, (error, stack) {
+        if (!controller.isClosed) {
+          controller.addError(error, stack);
+          controller.close();
+        }
+      });
+
+      return controller.stream;
+    };
+  }
 
   Future<void> _initAndLoad() async {
     _loading = true;
@@ -936,12 +1028,57 @@ class PlaygroundController extends ChangeNotifier {
           }
 
           _log('Generating LLM response...');
-          final response = await LLMService.generate(
-            config: activeLlmConfig,
-            messages: requestMsgs,
-            tools: mcpTools,
-            systemPrompt: systemPrompt,
-          );
+          final LLMResponse response;
+          if (activeLlmConfig.useStreaming ||
+              activeLlmConfig.isSlm ||
+              activeLlmConfig.provider == LlmProvider.ollama) {
+            final assistantId = _uuid.v4();
+            final streamMsg = ChatMessage(
+              id: assistantId,
+              content: '',
+              role: ChatRole.assistant,
+              timestamp: DateTime.now(),
+            );
+            _messages.add(streamMsg);
+            notifyListeners();
+
+            final textBuffer = StringBuffer();
+            LLMResponse? finalResponse;
+
+            try {
+              await for (final chunk in LLMService.generateStream(
+                config: activeLlmConfig,
+                messages: requestMsgs,
+                tools: mcpTools,
+                systemPrompt: systemPrompt,
+              )) {
+                if (_cancelRequested) break;
+                if (chunk.textDelta.isNotEmpty) {
+                  textBuffer.write(chunk.textDelta);
+                  final idx = _messages.indexWhere((m) => m.id == assistantId);
+                  if (idx != -1) {
+                    _messages[idx] = streamMsg.copyWith(content: textBuffer.toString());
+                    notifyListeners();
+                  }
+                }
+                if (chunk.isDone) {
+                  finalResponse = chunk.finalResponse;
+                }
+              }
+            } finally {
+              _messages.removeWhere((m) => m.id == assistantId);
+            }
+
+            if (_cancelRequested) break;
+            response = finalResponse ?? LLMResponse(text: textBuffer.toString());
+          } else {
+            response = await LLMService.generate(
+              config: activeLlmConfig,
+              messages: requestMsgs,
+              tools: mcpTools,
+              systemPrompt: systemPrompt,
+            );
+          }
 
           // ── Cancellation check after LLM returns ──────────────────────
           if (_cancelRequested) {

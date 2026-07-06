@@ -1,3 +1,10 @@
+## 0.1.5
+
+* Upgraded `mcp_playground_dart` core dependency to `0.1.3`.
+* Added streaming support refactoring for Small Language Models (SLMs) and on-device models.
+* Linked `EmbeddedLlmAdapter` dynamically using static delegate handlers on `LLMService` to resolve FFI bindings on desktop platforms.
+* Fixed README.md image links to use the correct GitHub raw URLs, resolving broken media rendering issues on pub.dev.
+
 ## 0.1.4
 
 * Upgraded README.md video to embedded test GIF

@@ -54,6 +54,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   bool _thinking = false;
   bool _useNativeToolCall = true;
   bool _useSafeToolCall = false;
+  bool _useStreaming = false;
 
   @override
   void initState() {
@@ -125,6 +126,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
     _thinking = config.thinking;
     _useNativeToolCall = config.useNativeToolCall;
     _useSafeToolCall = config.useSafeToolCall;
+    _useStreaming = config.useStreaming;
   }
 
   @override
@@ -172,6 +174,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
       thinking: _thinking,
       useNativeToolCall: _useNativeToolCall,
       useSafeToolCall: _useSafeToolCall,
+      useStreaming: _useStreaming,
     );
 
     await widget.controller.updateLlmConfig(updated);
@@ -469,6 +472,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
                                       useNativeToolCall: _useNativeToolCall,
                                       onUseNativeToolCallChanged: (val) =>
                                           setState(() => _useNativeToolCall = val),
+                                      useStreaming: _useStreaming,
+                                      onUseStreamingChanged: (val) =>
+                                          setState(() => _useStreaming = val),
                                     ),
                                   ],
                                 ),

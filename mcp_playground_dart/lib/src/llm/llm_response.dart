@@ -28,3 +28,23 @@ class LLMResponse {
   /// Creates a new [LLMResponse] instance.
   const LLMResponse({required this.text, this.toolCalls = const []});
 }
+
+/// Represents a chunk of text or progress emitted during a streaming LLM call.
+class LLMStreamChunk {
+  /// The incremental text piece.
+  final String textDelta;
+
+  /// True when this is the final chunk in the stream.
+  final bool isDone;
+
+  /// The final full response containing the accumulated text and tool calls.
+  /// This field is only non-null when [isDone] is true.
+  final LLMResponse? finalResponse;
+
+  /// Creates a new [LLMStreamChunk] instance.
+  const LLMStreamChunk({
+    required this.textDelta,
+    this.isDone = false,
+    this.finalResponse,
+  });
+}

@@ -398,6 +398,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
   final ValueChanged<bool> onIsMultiModalChanged;
   final bool useNativeToolCall;
   final ValueChanged<bool> onUseNativeToolCallChanged;
+  final bool useStreaming;
+  final ValueChanged<bool> onUseStreamingChanged;
 
   const LlmAdvancedSettingsForm({
     super.key,
@@ -417,6 +419,8 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
     required this.onIsMultiModalChanged,
     required this.useNativeToolCall,
     required this.onUseNativeToolCallChanged,
+    required this.useStreaming,
+    required this.onUseStreamingChanged,
   });
 
   @override
@@ -607,6 +611,20 @@ class LlmAdvancedSettingsForm extends StatelessWidget {
           ),
           value: useNativeToolCall,
           onChanged: (v) => onUseNativeToolCallChanged(v),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text(
+            'Enable token streaming',
+            style: TextStyle(fontSize: 12),
+          ),
+          subtitle: const Text(
+            'Receive text increments token-by-token in real-time',
+            style: TextStyle(fontSize: 10, color: Colors.grey),
+          ),
+          value: useStreaming,
+          onChanged: (v) => onUseStreamingChanged(v),
         ),
       ],
     );

@@ -1,3 +1,9 @@
+## 0.1.3
+
+- Refactored streaming support for Small Language Models (SLMs) and embedded models.
+- Added dynamic static delegates `embeddedHandler` and `embeddedStreamHandler` to plug on-device inference engines without hard code dependencies.
+- Added a new headless CLI example `embedded_example` demonstrating on-device Hugging Face GGUF model downloading, offline inference, local weather tool execution, and token-by-token terminal stream outputs.
+
 ## 0.1.2
 
 - Expose `agentEvents` stream in `McpAgentEngine` and return a reactive event stream from `runAsync` for asynchronous streaming execution.

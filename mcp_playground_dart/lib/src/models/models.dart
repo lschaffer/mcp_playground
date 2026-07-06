@@ -89,6 +89,7 @@ class LlmConfig {
   final bool thinking;
   final bool useNativeToolCall;
   final bool useSafeToolCall;
+  final bool useStreaming;
 
   const LlmConfig({
     required this.provider,
@@ -108,6 +109,7 @@ class LlmConfig {
     this.thinking = false,
     this.useNativeToolCall = true,
     this.useSafeToolCall = false,
+    this.useStreaming = false,
   });
 
   bool get isConfigured {
@@ -138,6 +140,7 @@ class LlmConfig {
     bool? thinking,
     bool? useNativeToolCall,
     bool? useSafeToolCall,
+    bool? useStreaming,
   }) {
     return LlmConfig(
       provider: provider ?? this.provider,
@@ -158,6 +161,7 @@ class LlmConfig {
       thinking: thinking ?? this.thinking,
       useNativeToolCall: useNativeToolCall ?? this.useNativeToolCall,
       useSafeToolCall: useSafeToolCall ?? this.useSafeToolCall,
+      useStreaming: useStreaming ?? this.useStreaming,
     );
   }
 
@@ -179,6 +183,7 @@ class LlmConfig {
     'thinking': thinking,
     'useNativeToolCall': useNativeToolCall,
     'useSafeToolCall': useSafeToolCall,
+    'useStreaming': useStreaming,
   };
 
   factory LlmConfig.fromJson(Map<String, dynamic> json) {
@@ -200,6 +205,7 @@ class LlmConfig {
       thinking: json['thinking'] as bool? ?? false,
       useNativeToolCall: json['useNativeToolCall'] as bool? ?? true,
       useSafeToolCall: json['useSafeToolCall'] as bool? ?? false,
+      useStreaming: json['useStreaming'] as bool? ?? false,
     );
   }
 }
@@ -636,6 +642,30 @@ class ChatMessage {
     this.toolResult,
     this.attachments,
   });
+
+  ChatMessage copyWith({
+    String? id,
+    String? content,
+    ChatRole? role,
+    DateTime? timestamp,
+    MessageType? type,
+    String? toolName,
+    Map<String, dynamic>? toolArguments,
+    MCPToolResult? toolResult,
+    List<MessageAttachment>? attachments,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      role: role ?? this.role,
+      timestamp: timestamp ?? this.timestamp,
+      type: type ?? this.type,
+      toolName: toolName ?? this.toolName,
+      toolArguments: toolArguments ?? this.toolArguments,
+      toolResult: toolResult ?? this.toolResult,
+      attachments: attachments ?? this.attachments,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,

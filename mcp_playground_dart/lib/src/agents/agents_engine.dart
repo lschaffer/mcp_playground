@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../llm/llm_service.dart';
+import '../llm/llm_response.dart';
 import '../mcp/local_tools.dart';
 import '../mcp/mcp_client.dart';
 import '../mcp/mcp_client_def.dart';
@@ -62,6 +63,12 @@ class AgentErrorEvent extends AgentEvent {
 class AgentFinalResultEvent extends AgentEvent {
   final String response;
   AgentFinalResultEvent(this.response);
+}
+
+/// Token-by-token text delta from the LLM — emitted during streaming.
+class AgentTextChunkEvent extends AgentEvent {
+  final String chunk;
+  AgentTextChunkEvent(this.chunk);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -235,10 +242,9 @@ class McpAgentEngine {
 
   // ── Execution ─────────────────────────────────────────────────
 
-  /// Execute an agent synchronously. Blocks until completion.
-  ///
-  /// Callbacks are optional except [onError] and [onFinalResult].
+  /// Execute an agent and await its completion.
   /// Returns the final response text.
+  /// Use [runAsync] to receive a real-time [Stream] of [AgentEvent]s.
   Future<String> run(
     String agentKey, {
     LogCallback? onLog,
@@ -270,6 +276,7 @@ class McpAgentEngine {
     FinalResultCallback? onFinalResult,
     MultiMCPManager? mcpManager,
   }) {
+    final runController = StreamController<AgentEvent>.broadcast();
     unawaited(
       _executeAgent(
         agentKey,
@@ -279,9 +286,15 @@ class McpAgentEngine {
         onError: onError,
         onFinalResult: onFinalResult,
         externalMcpManager: mcpManager,
-      ),
+        runController: runController,
+      ).then((_) {
+        runController.close();
+      }).catchError((err) {
+        runController.addError(err);
+        runController.close();
+      }),
     );
-    return agentEvents;
+    return runController.stream;
   }
 
   // ── Internal Execution ────────────────────────────────────────
@@ -294,11 +307,17 @@ class McpAgentEngine {
     ErrorCallback? onError,
     FinalResultCallback? onFinalResult,
     MultiMCPManager? externalMcpManager,
+    StreamController<AgentEvent>? runController,
   }) async {
+    void emit(AgentEvent event) {
+      _eventController.add(event);
+      runController?.add(event);
+    }
+
     final agent = _agents[agentKey];
     if (agent == null) {
       final err = 'Agent with key "$agentKey" not found.';
-      _eventController.add(AgentErrorEvent(err));
+      emit(AgentErrorEvent(err));
       onError?.call(err);
       _statuses[agentKey] = AgentStatus.error;
       throw ArgumentError(err);
@@ -343,7 +362,7 @@ class McpAgentEngine {
           _log('Connected to remote MCP server: ${server.name}');
         } catch (e) {
           _log('Failed to connect to remote MCP server ${server.name}: $e');
-          _eventController.add(
+          emit(
             AgentLogEvent(
               'Warning: Could not connect to MCP server "${server.name}": $e',
             ),
@@ -377,7 +396,7 @@ class McpAgentEngine {
           _log('Connected to local MCP server: ${server.name}');
         } catch (e) {
           _log('Failed to connect to local MCP server ${server.name}: $e');
-          _eventController.add(
+          emit(
             AgentLogEvent(
               'Warning: Could not connect to local MCP server "${server.name}": $e',
             ),
@@ -429,7 +448,7 @@ class McpAgentEngine {
         }
       }
 
-      _eventController.add(AgentLogEvent('Agent "${agent.name}" started.'));
+      emit(AgentLogEvent('Agent "${agent.name}" started.'));
       onLog?.call('Agent "${agent.name}" started.');
 
       // ── Execute sub-prompts ────────────────────────────
@@ -443,7 +462,7 @@ class McpAgentEngine {
       for (int stepIdx = 0; stepIdx < steps.length; stepIdx++) {
         if (_cancelTokens[agentKey] == true) {
           final cancelMsg = 'Execution cancelled by user.';
-          _eventController.add(AgentLogEvent(cancelMsg));
+          emit(AgentLogEvent(cancelMsg));
           onLog?.call(cancelMsg);
           messages.add(
             ChatMessage(
@@ -503,7 +522,7 @@ class McpAgentEngine {
             timestamp: DateTime.now(),
           );
           messages.add(userMsg);
-          _eventController.add(
+          emit(
             AgentLogEvent('User prompt [step ${stepIdx + 1}]: $prompt'),
           );
           onLog?.call('User prompt [step ${stepIdx + 1}]: $prompt');
@@ -524,7 +543,7 @@ class McpAgentEngine {
                 timestamp: DateTime.now(),
               ),
             );
-            _eventController.add(AgentLogEvent(cancelMsg));
+            emit(AgentLogEvent(cancelMsg));
             onLog?.call(cancelMsg);
             break;
           }
@@ -540,7 +559,7 @@ class McpAgentEngine {
                 timestamp: DateTime.now(),
               ),
             );
-            _eventController.add(AgentLogEvent(limitMsg));
+            emit(AgentLogEvent(limitMsg));
             onLog?.call(limitMsg);
             break;
           }
@@ -564,12 +583,35 @@ class McpAgentEngine {
           }
 
           _log('Generating LLM response (step ${stepIdx + 1})...');
-          final response = await LLMService.generate(
-            config: agent.llmConfig,
-            messages: requestMsgs,
-            tools: mcpTools,
-            systemPrompt: effectiveSystem,
-          );
+          final LLMResponse response;
+          if (agent.llmConfig.useStreaming || agent.llmConfig.isSlm) {
+            final textBuffer = StringBuffer();
+            LLMResponse? finalResponse;
+            await for (final chunk in LLMService.generateStream(
+              config: agent.llmConfig,
+              messages: requestMsgs,
+              tools: mcpTools,
+              systemPrompt: effectiveSystem,
+            )) {
+              if (_cancelTokens[agentKey] == true) break;
+              if (chunk.textDelta.isNotEmpty) {
+                textBuffer.write(chunk.textDelta);
+                emit(AgentTextChunkEvent(chunk.textDelta));
+              }
+              if (chunk.isDone) {
+                finalResponse = chunk.finalResponse;
+              }
+            }
+            if (_cancelTokens[agentKey] == true) break;
+            response = finalResponse ?? LLMResponse(text: textBuffer.toString());
+          } else {
+            response = await LLMService.generate(
+              config: agent.llmConfig,
+              messages: requestMsgs,
+              tools: mcpTools,
+              systemPrompt: effectiveSystem,
+            );
+          }
 
           if (_cancelTokens[agentKey] == true) break;
 
@@ -587,7 +629,7 @@ class McpAgentEngine {
               final promptForEvent = prompt.isNotEmpty
                   ? prompt
                   : '[tool result]';
-              _eventController.add(
+              emit(
                 AgentAssistantResultEvent(
                   prompt: promptForEvent,
                   response: response.text,
@@ -686,7 +728,7 @@ class McpAgentEngine {
             messages.add(callMsg);
             stepNewMsgs.add(callMsg);
             final logMessage = 'Calling tool: ${call.name} with args: ${jsonEncode(call.arguments)}';
-            _eventController.add(AgentLogEvent(logMessage));
+            emit(AgentLogEvent(logMessage));
             onLog?.call(logMessage);
 
             // Execute tool
@@ -734,7 +776,7 @@ class McpAgentEngine {
             messages.add(resMsg);
             stepNewMsgs.add(resMsg);
 
-            _eventController.add(
+            emit(
               AgentToolResultEvent(
                 toolName: call.name,
                 parameters: call.arguments,
@@ -792,7 +834,7 @@ class McpAgentEngine {
 
       // ── Final result ────────────────────────────────────
       _statuses[agentKey] = AgentStatus.finished;
-      _eventController.add(AgentFinalResultEvent(lastResponse));
+      emit(AgentFinalResultEvent(lastResponse));
       onFinalResult?.call(lastResponse);
 
       _log(
@@ -802,7 +844,7 @@ class McpAgentEngine {
       return lastResponse;
     } catch (e, stack) {
       _statuses[agentKey] = AgentStatus.error;
-      _eventController.add(AgentErrorEvent(e));
+      emit(AgentErrorEvent(e));
       onError?.call(e);
       _log('Agent "${agent.name}" failed: $e\n$stack');
       rethrow;

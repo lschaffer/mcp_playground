@@ -20,6 +20,10 @@ dependencies:
   mime: ^2.0.0
   fl_chart: ^1.2.0
 
+dependency_overrides:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -124,6 +124,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
   bool _customIsSlm = false;
   bool _customIsMultiModal = true;
   bool _customUseNativeTool = true;
+  bool _customUseStreaming = false;
 
   @override
   void initState() {
@@ -991,6 +992,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             _customIsSlm = custom.isSlm;
                             _customIsMultiModal = custom.isMultiModal;
                             _customUseNativeTool = custom.useNativeToolCall;
+                            _customUseStreaming = custom.useStreaming;
                           }
 
                           // Load tool selections
@@ -1308,6 +1310,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
       _customIsSlm = defaults.isSlm;
       _customIsMultiModal = defaults.isMultiModal;
       _customUseNativeTool = defaults.useNativeToolCall;
+      _customUseStreaming = defaults.useStreaming;
     });
   }
 
@@ -1546,6 +1549,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
         isSlm: _customIsSlm,
         isMultiModal: _customIsMultiModal,
         useNativeToolCall: _customUseNativeTool,
+        useStreaming: _customUseStreaming,
       );
     }
     return _controller.llmConfig;
@@ -1650,6 +1654,7 @@ class _McpPlaygroundState extends State<McpPlayground> {
         isSlm: _customIsSlm,
         isMultiModal: _customIsMultiModal,
         useNativeToolCall: _customUseNativeTool,
+        useStreaming: _customUseStreaming,
       );
     }
 
@@ -1968,6 +1973,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
                             useNativeToolCall: _customUseNativeTool,
                             onUseNativeToolCallChanged: (val) =>
                                 setState(() => _customUseNativeTool = val),
+                            useStreaming: _customUseStreaming,
+                            onUseStreamingChanged: (val) =>
+                                setState(() => _customUseStreaming = val),
                           ),
                         ],
                       ),

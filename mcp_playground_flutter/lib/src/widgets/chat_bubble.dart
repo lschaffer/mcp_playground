@@ -59,6 +59,16 @@ class ChatBubble extends StatelessWidget {
 
     final isDark = theme.brightness == Brightness.dark;
 
+    final isActive = controller != null &&
+        controller!.isGenerating &&
+        controller!.messages.isNotEmpty &&
+        controller!.messages.last.id == message.id;
+
+    final showTypingIndicator = isActive && !isUser && message.content.isEmpty;
+    final contentToShow = (isActive && !isUser && message.content.isNotEmpty)
+        ? '${message.content} ▌'
+        : message.content;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
       child: Row(
@@ -89,10 +99,15 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_isHtmlContent(message.content))
-                    _buildTextContent(context, message.content, theme)
+                  if (showTypingIndicator)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                      child: _TypingIndicator(),
+                    )
+                  else if (_isHtmlContent(contentToShow))
+                    _buildTextContent(context, contentToShow, theme)
                   else
-                    _buildMarkdownWithEmbeddedDataUris(context, message.content, theme),
+                    _buildMarkdownWithEmbeddedDataUris(context, contentToShow, theme),
                   if (message.content.trim().isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Row(
@@ -1079,6 +1094,67 @@ class ChatBubble extends StatelessWidget {
           tooltip: 'Download File',
         ),
       ),
+    );
+  }
+}
+
+class _TypingIndicator extends StatefulWidget {
+  const _TypingIndicator();
+
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        return AnimatedBuilder(
+          animation: _animCtrl,
+          builder: (context, child) {
+            final delay = index * 0.2;
+            final progress = (_animCtrl.value - delay).clamp(0.0, 1.0);
+            final scale = 1.0 + (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.4;
+            final opacity = 0.3 + (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.7;
+
+            return Opacity(
+              opacity: opacity.clamp(0.3, 1.0),
+              child: Transform.scale(
+                scale: scale.clamp(1.0, 1.4),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF7C3AED),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }),
     );
   }
 }

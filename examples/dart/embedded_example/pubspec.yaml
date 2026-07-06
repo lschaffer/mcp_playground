@@ -1,0 +1,23 @@
+name: mcp_embedded_example
+description: Pure Dart example demonstrating on-device execution and token-level streaming using llamadart.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+  llamadart: ^0.8.10
+  yaml: ^3.1.2
+  http: ^1.2.1
+  path: ^1.9.0
+  uuid: ^4.5.3
+
+dependency_overrides:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+
+dev_dependencies:
+  lints: ^3.0.0
