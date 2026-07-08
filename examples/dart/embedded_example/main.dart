@@ -10,7 +10,8 @@ import 'weather_tools.dart';
 
 // Resolves the default model storage directory: users/$user/.models
 String _getDefaultModelsDir() {
-  final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+  final home =
+      Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
   if (home == null || home.isEmpty) {
     return p.join(Directory.current.path, 'models');
   }
@@ -30,7 +31,7 @@ Future<void> _downloadFile(String url, String savePath) async {
   final file = File(savePath);
   // Ensure the parent directory exists
   await file.parent.create(recursive: true);
-  
+
   final sink = file.openWrite();
   final contentLength = response.contentLength ?? 0;
   int downloadedBytes = 0;
@@ -44,10 +45,12 @@ Future<void> _downloadFile(String url, String savePath) async {
       stdout.write(
         '\rProgress: ${pct.toStringAsFixed(1)}% '
         '(${(downloadedBytes / (1024 * 1024)).toStringAsFixed(1)} MB / '
-        '${(contentLength / (1024 * 1024)).toStringAsFixed(1)} MB)'
+        '${(contentLength / (1024 * 1024)).toStringAsFixed(1)} MB)',
       );
     } else {
-      stdout.write('\rDownloaded: ${(downloadedBytes / (1024 * 1024)).toStringAsFixed(1)} MB');
+      stdout.write(
+        '\rDownloaded: ${(downloadedBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+      );
     }
   }
 
@@ -140,14 +143,14 @@ void _populateHistory(ChatSession session, List<ChatMessage> messages) {
       if (session.history.isNotEmpty &&
           session.history.last.role == LlamaChatRole.tool) {
         session.addMessage(
-          const LlamaChatMessage.fromText(role: LlamaChatRole.assistant, text: ' '),
+          const LlamaChatMessage.fromText(
+            role: LlamaChatRole.assistant,
+            text: ' ',
+          ),
         );
       }
       session.addMessage(
-        LlamaChatMessage.fromText(
-          role: LlamaChatRole.user,
-          text: msg.content,
-        ),
+        LlamaChatMessage.fromText(role: LlamaChatRole.user, text: msg.content),
       );
       i++;
     } else if (msg.role == ChatRole.assistant) {
@@ -180,7 +183,9 @@ void _populateHistory(ChatSession session, List<ChatMessage> messages) {
         );
 
         for (final tr in toolResults) {
-          final resultText = tr.toolResult?.content.map((c) => c.text ?? '').join('\n') ?? tr.content;
+          final resultText =
+              tr.toolResult?.content.map((c) => c.text ?? '').join('\n') ??
+              tr.content;
           session.addMessage(
             LlamaChatMessage.withContent(
               role: LlamaChatRole.tool,
@@ -206,7 +211,9 @@ void _populateHistory(ChatSession session, List<ChatMessage> messages) {
         i++;
       }
     } else if (msg.role == ChatRole.tool) {
-      final resultText = msg.toolResult?.content.map((c) => c.text ?? '').join('\n') ?? msg.content;
+      final resultText =
+          msg.toolResult?.content.map((c) => c.text ?? '').join('\n') ??
+          msg.content;
       session.addMessage(
         LlamaChatMessage.withContent(
           role: LlamaChatRole.tool,
@@ -235,133 +242,159 @@ class _ToolCallAccumulator {
 
 // Register dynamic delegate handlers inside LLMService to route LlmProvider.embedded calls to llamadart
 void _registerLlamaDelegates(LlamaEngine engine) {
-  LLMService.embeddedHandler = ({
-    required LlmConfig config,
-    required List<ChatMessage> messages,
-    required List<MCPTool> tools,
-    String? systemPrompt,
-  }) async {
-    final session = ChatSession(engine);
-    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-      session.systemPrompt = systemPrompt;
-    }
-    _populateHistory(session, messages);
-    final toolDefs = _convertTools(tools);
-
-    final params = GenerationParams(
-      maxTokens: config.maxTokens > 0 ? config.maxTokens : 512,
-      temp: config.temperature,
-    );
-
-    String text = '';
-    await for (final chunk in session.create([], tools: toolDefs, params: params)) {
-      if (chunk.choices.isNotEmpty) {
-        final content = chunk.choices.first.delta.content;
-        if (content != null) {
-          text += content;
+  LLMService.embeddedHandler =
+      ({
+        required LlmConfig config,
+        required List<ChatMessage> messages,
+        required List<MCPTool> tools,
+        String? systemPrompt,
+      }) async {
+        final session = ChatSession(engine);
+        if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+          session.systemPrompt = systemPrompt;
         }
-      }
-    }
+        _populateHistory(session, messages);
+        final toolDefs = _convertTools(tools);
 
-    final lastHistoryMsg = session.history.lastOrNull;
-    final toolCalls = lastHistoryMsg?.parts
-        .whereType<LlamaToolCallContent>()
-        .map(
-          (tc) => LLMToolCall(
-            id: tc.id ?? tc.name,
-            name: tc.name,
-            arguments: tc.arguments,
-          ),
-        )
-        .toList() ??
-    [];
+        final params = GenerationParams(
+          maxTokens: config.maxTokens > 0 ? config.maxTokens : 2048,
+          temp: config.temperature,
+        );
 
-    return LLMResponse(text: text, toolCalls: toolCalls);
-  };
-
-  LLMService.embeddedStreamHandler = ({
-    required LlmConfig config,
-    required List<ChatMessage> messages,
-    required List<MCPTool> tools,
-    String? systemPrompt,
-  }) {
-    final controller = StreamController<LLMStreamChunk>();
-    final session = ChatSession(engine);
-    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-      session.systemPrompt = systemPrompt;
-    }
-    _populateHistory(session, messages);
-    final toolDefs = _convertTools(tools);
-
-    final params = GenerationParams(
-      maxTokens: config.maxTokens > 0 ? config.maxTokens : 512,
-      temp: config.temperature,
-    );
-
-    runZonedGuarded(() async {
-      String fullText = '';
-      final toolCallAccumulators = <int, _ToolCallAccumulator>{};
-      await for (final chunk in session.create([], tools: toolDefs, params: params)) {
-        if (chunk.choices.isNotEmpty) {
-          final delta = chunk.choices.first.delta;
-          final content = delta.content;
-          if (content != null && content.isNotEmpty) {
-            fullText += content;
-            controller.add(LLMStreamChunk(textDelta: content));
-          }
-          if (delta.toolCalls != null) {
-            for (final tc in delta.toolCalls!) {
-              final acc = toolCallAccumulators.putIfAbsent(tc.index, () => _ToolCallAccumulator());
-              if (tc.id != null) acc.id = tc.id!;
-              if (tc.function?.name != null) acc.name = tc.function!.name!;
-              if (tc.function?.arguments != null) {
-                acc.arguments += tc.function!.arguments!;
-              }
+        String text = '';
+        await for (final chunk in session.create(
+          [],
+          tools: toolDefs,
+          params: params,
+        )) {
+          if (chunk.choices.isNotEmpty) {
+            final content = chunk.choices.first.delta.content;
+            if (content != null) {
+              text += content;
             }
           }
         }
-      }
 
-      final toolCalls = <LLMToolCall>[];
-      final sortedIndices = toolCallAccumulators.keys.toList()..sort();
-      for (final index in sortedIndices) {
-        final acc = toolCallAccumulators[index]!;
-        Map<String, dynamic> args = {};
-        try {
-          if (acc.arguments.isNotEmpty) {
-            args = Map<String, dynamic>.from(jsonDecode(acc.arguments) as Map);
-          }
-        } catch (_) {}
-        toolCalls.add(
-          LLMToolCall(
-            id: acc.id.isNotEmpty ? acc.id : 'call_${index}',
-            name: acc.name,
-            arguments: args,
-          ),
+        final lastHistoryMsg = session.history.lastOrNull;
+        final toolCalls =
+            lastHistoryMsg?.parts
+                .whereType<LlamaToolCallContent>()
+                .map(
+                  (tc) => LLMToolCall(
+                    id: tc.id ?? tc.name,
+                    name: tc.name,
+                    arguments: tc.arguments,
+                  ),
+                )
+                .toList() ??
+            [];
+
+        return LLMResponse(text: text, toolCalls: toolCalls);
+      };
+
+  LLMService.embeddedStreamHandler =
+      ({
+        required LlmConfig config,
+        required List<ChatMessage> messages,
+        required List<MCPTool> tools,
+        String? systemPrompt,
+      }) {
+        final controller = StreamController<LLMStreamChunk>();
+        final session = ChatSession(engine);
+        if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+          session.systemPrompt = systemPrompt;
+        }
+        _populateHistory(session, messages);
+        final toolDefs = _convertTools(tools);
+
+        final params = GenerationParams(
+          maxTokens: config.maxTokens > 0 ? config.maxTokens : 4096,
+          temp: config.temperature,
         );
-      }
 
-      controller.add(LLMStreamChunk(
-        textDelta: '',
-        isDone: true,
-        finalResponse: LLMResponse(text: fullText, toolCalls: toolCalls),
-      ));
-      await controller.close();
-    }, (error, stack) {
-      if (!controller.isClosed) {
-        controller.addError(error, stack);
-        controller.close();
-      }
-    });
+        runZonedGuarded(
+          () async {
+            String fullText = '';
+            final toolCallAccumulators = <int, _ToolCallAccumulator>{};
+            await for (final chunk in session.create(
+              [],
+              tools: toolDefs,
+              params: params,
+            )) {
+              if (chunk.choices.isNotEmpty) {
+                final delta = chunk.choices.first.delta;
+                final content = delta.content;
+                if (content != null && content.isNotEmpty) {
+                  fullText += content;
+                  controller.add(LLMStreamChunk(textDelta: content));
+                }
+                if (delta.toolCalls != null) {
+                  for (final tc in delta.toolCalls!) {
+                    final acc = toolCallAccumulators.putIfAbsent(
+                      tc.index,
+                      () => _ToolCallAccumulator(),
+                    );
+                    if (tc.id != null) acc.id = tc.id!;
+                    if (tc.function?.name != null)
+                      acc.name = tc.function!.name!;
+                    if (tc.function?.arguments != null) {
+                      acc.arguments += tc.function!.arguments!;
+                    }
+                  }
+                }
+              }
+            }
 
-    return controller.stream;
-  };
+            final toolCalls = <LLMToolCall>[];
+            final sortedIndices = toolCallAccumulators.keys.toList()..sort();
+            for (final index in sortedIndices) {
+              final acc = toolCallAccumulators[index]!;
+              Map<String, dynamic> args = {};
+              try {
+                if (acc.arguments.isNotEmpty) {
+                  args = Map<String, dynamic>.from(
+                    jsonDecode(acc.arguments) as Map,
+                  );
+                }
+              } catch (_) {}
+              toolCalls.add(
+                LLMToolCall(
+                  id: acc.id.isNotEmpty ? acc.id : 'call_${index}',
+                  name: acc.name,
+                  arguments: args,
+                ),
+              );
+            }
+
+            controller.add(
+              LLMStreamChunk(
+                textDelta: '',
+                isDone: true,
+                finalResponse: LLMResponse(
+                  text: fullText,
+                  toolCalls: toolCalls,
+                ),
+              ),
+            );
+            await controller.close();
+          },
+          (error, stack) {
+            if (!controller.isClosed) {
+              controller.addError(error, stack);
+              controller.close();
+            }
+          },
+        );
+
+        return controller.stream;
+      };
 }
 
 Future<void> main() async {
   // 1. Read config.yaml if it exists
   String modelDir = '';
-  String modelUrl = 'https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf';
+  String modelUrl =
+      'https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf';
   String modelName = 'Qwen2.5-3B-Instruct-Q4_K_M.gguf';
 
   final configFile = File('config.yaml');
@@ -401,7 +434,9 @@ Future<void> main() async {
   }
 
   // 3. Initialize Llama Engine and load model
-  print('Loading embedded GGUF model into memory (this can take a few seconds)...');
+  print(
+    'Loading embedded GGUF model into memory (this can take a few seconds)...',
+  );
   LlamaEngine.configureLogging(level: LlamaLogLevel.warn);
   final backend = LlamaBackend();
   final engine = LlamaEngine(backend);
@@ -410,8 +445,9 @@ Future<void> main() async {
     await engine.loadModel(
       fullModelPath,
       modelParams: ModelParams(
-        contextSize: 2048,
-        gpuLayers: 0, // Force CPU execution on Windows. Set to ModelParams.maxGpuLayers to use Metal GPU on macOS.
+        contextSize: 4096,
+        gpuLayers: ModelParams
+            .maxGpuLayers, //0 Force CPU execution on Windows. Set to ModelParams.maxGpuLayers to use Metal GPU on macOS.
       ),
     );
     print('Model successfully loaded!');
@@ -442,10 +478,12 @@ Future<void> main() async {
     key: 'embedded_weather_agent',
     name: 'Embedded Weather Assistant',
     llmConfig: defaultLlm,
-    systemPrompt: 'You are an AI assistant specialized in weather forecasts. Use the weather tools to answer user questions.',
+    systemPrompt:
+        'You are an AI assistant specialized in weather forecasts. Use the weather tools to answer user questions.',
     prompts: [
       const SubPromptStep(
-        text: 'show next 24 hours forecast from Rome,Italy',
+        text:
+            'show next 24 hours forecast from Rome,Italy, ist all 24 hours individually without summarizing',
       ),
     ],
     dartTools: weatherTools,
@@ -460,7 +498,9 @@ Future<void> main() async {
       print('\n[LOG] ${event.message}');
     } else if (event is AgentToolResultEvent) {
       print('\n[TOOL CALL] ${event.toolName}');
-      print('Result: ${event.result.length > 500 ? "${event.result.substring(0, 500)}..." : event.result}');
+      print(
+        'Result: ${event.result.length > 500 ? "${event.result.substring(0, 500)}..." : event.result}',
+      );
     } else if (event is AgentTextChunkEvent) {
       stdout.write(event.chunk);
     } else if (event is AgentAssistantResultEvent) {
@@ -474,7 +514,9 @@ Future<void> main() async {
     }
   });
 
-  print('\nRunning Weather Forecast Agent with prompt: "show next 24 hours forecast from Rome,Italy"...\n');
+  print(
+    '\nRunning Weather Forecast Agent with prompt: "show next 24 hours forecast from Rome,Italy"...\n',
+  );
 
   try {
     final stream = agentEngine.runAsync(agent.key);
@@ -483,7 +525,8 @@ Future<void> main() async {
     );
   } finally {
     await subscription.cancel();
-    await engine.unloadModel();
+    await engine.dispose();
+    await backend.dispose();
     await agentEngine.dispose();
   }
 }
