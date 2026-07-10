@@ -1,5 +1,8 @@
 # MCP Playground Monorepo
 
+> [!NOTE]
+> This project was created and is actively maintained using agentic coding tools. The core monorepo and its packages were built with **Google Antigravity IDE** (primarily powered by **Gemini 3.5 Flash**), and specific components (such as some examples) were developed using the **ZooCode** plugin with **DeepSeek-V4**. It stands as a real-world demonstration of building production-ready Dart packages and interactive Flutter libraries using agentic workflows.
+
 Welcome to the **MCP Playground** monorepo! This project is split into a headless pure-Dart core package and an interactive Flutter widget library to let you prototype, debug, and run agentic Model Context Protocol (MCP) workflows across any platform.
 
 ---
@@ -36,7 +39,7 @@ We provide several example applications showcasing both UI and headless integrat
 ---
 
 ## 🎥 Demo Video & Visuals
-
+-
 Watch the Flutter UI Playground executing terminal SSH tasks and charting stats:
 
 ![SSH MCP Demo](./screenshots/video/mcp_playground_ssh_chart_test.gif)
