@@ -9,12 +9,12 @@ environment:
 
 dependencies:
   universal_io: ^2.3.1
-  http: ^1.2.1
+  http: ^1.6.0
   uuid: ^4.5.3
   openai_dart: ^7.0.0
-  anthropic_sdk_dart: ^5.0.0
-  ollama_dart: ^2.3.0
-  googleai_dart: ^8.0.0
+  anthropic_sdk_dart: ^6.0.0
+  ollama_dart: ^2.4.0
+  googleai_dart: ^9.0.0
   path: ^1.9.0
 
 dev_dependencies:
