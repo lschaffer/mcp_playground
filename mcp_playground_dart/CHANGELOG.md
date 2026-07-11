@@ -1,3 +1,7 @@
+## 0.1.4
+
+- Upgraded dependencies: `anthropic_sdk_dart` to `^6.0.0`, `googleai_dart` to `^9.0.0`, `ollama_dart` to `^2.4.0`, `http` to `^1.6.0`.
+
 ## 0.1.3
 
 - Refactored streaming support for Small Language Models (SLMs) and embedded models.

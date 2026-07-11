@@ -1,3 +1,8 @@
+## 0.1.6
+
+* Upgraded `mcp_playground_dart` core dependency to `0.1.4`.
+* Upgraded dependencies: `anthropic_sdk_dart` to `^6.0.0`, `googleai_dart` to `^9.0.0`, `ollama_dart` to `^2.4.0`, `llamadart` to `^0.8.14`, `http` to `^1.6.0`, `shared_preferences` to `^2.5.5`, `flutter_markdown_plus` to `^1.0.12`, `flutter_widget_from_html` to `^0.17.2`, `url_launcher` to `^6.3.2`, `path_provider` to `^2.1.6`.
+
 ## 0.1.5
 
 * Upgraded `mcp_playground_dart` core dependency to `0.1.3`.

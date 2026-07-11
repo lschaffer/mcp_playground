@@ -9,4 +9,4 @@ environment:
 dependencies:
   mcp_playground_dart:
     path: ../../../mcp_playground_dart
-  http: ^1.2.1
+  http: ^1.6.0
