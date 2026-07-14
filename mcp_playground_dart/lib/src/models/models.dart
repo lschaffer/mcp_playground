@@ -905,6 +905,7 @@ class LocalMcpServerSetup {
 class SavedPlaygroundSetup {
   final String id;
   final String name;
+  final String description;
   final DateTime createdAt;
   final String systemPrompt;
   final String initialPrompt;
@@ -920,6 +921,7 @@ class SavedPlaygroundSetup {
   SavedPlaygroundSetup({
     required this.id,
     required this.name,
+    this.description = '',
     required this.createdAt,
     required this.systemPrompt,
     required this.initialPrompt,
@@ -932,27 +934,32 @@ class SavedPlaygroundSetup {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'createdAt': createdAt.toIso8601String(),
-        'systemPrompt': systemPrompt,
-        'initialPrompt': initialPrompt,
-        'enabledToolNames': enabledToolNames,
-        'chatMode': chatMode,
-        'stopAfterToolCall': stopAfterToolCall,
-        'useCustomLlm': useCustomLlm,
-        'customLlmConfig': customLlmConfig?.toJson(),
-        'mcpInitParams': mcpInitParams,
-      };
+    'id': id,
+    'name': name,
+    'description': description,
+    'createdAt': createdAt.toIso8601String(),
+    'systemPrompt': systemPrompt,
+    'initialPrompt': initialPrompt,
+    'enabledToolNames': enabledToolNames,
+    'chatMode': chatMode,
+    'stopAfterToolCall': stopAfterToolCall,
+    'useCustomLlm': useCustomLlm,
+    'customLlmConfig': customLlmConfig?.toJson(),
+    'mcpInitParams': mcpInitParams,
+  };
 
   factory SavedPlaygroundSetup.fromJson(Map<String, dynamic> json) {
     return SavedPlaygroundSetup(
       id: json['id'] as String,
       name: json['name'] as String,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      description: json['description'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
       systemPrompt: json['systemPrompt'] as String? ?? '',
       initialPrompt: json['initialPrompt'] as String? ?? '',
-      enabledToolNames: (json['enabledToolNames'] as List?)?.cast<String>() ?? [],
+      enabledToolNames:
+          (json['enabledToolNames'] as List?)?.cast<String>() ?? [],
       chatMode: json['chatMode'] as bool? ?? false,
       stopAfterToolCall: json['stopAfterToolCall'] as bool? ?? false,
       useCustomLlm: json['useCustomLlm'] as bool? ?? false,

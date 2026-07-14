@@ -4,6 +4,7 @@
 
 // Models
 export 'src/models/models.dart';
+export 'src/models/skill_manifest.dart';
 
 // LLM
 export 'src/llm/llm_service.dart';
@@ -19,3 +20,8 @@ export 'src/mcp/local_mcp_client_stub.dart'
 // Agents
 export 'src/agents/agents_engine.dart';
 export 'src/utils/change_notifier.dart';
+
+// Skills
+export 'src/skills/skill_storage_adapter.dart';
+export 'src/skills/skill_exporter.dart';
+export 'src/skills/skill_importer.dart';

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +12,7 @@ import 'src/widgets/agent_inspector.dart';
 import 'src/widgets/llm_config_form.dart';
 import 'src/mcp_localizations.dart';
 import 'src/widgets/sub_prompt_list_editor.dart';
+import 'src/widgets/skill_save_dialog.dart';
 import 'src/utils/mime_utils.dart';
 import 'src/widgets/initial_mcp_install_progress_dialog.dart';
 import 'src/services/embedded_llm/embedded_model.dart';
@@ -1030,263 +1030,17 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
-  Future<void> _exportSetups() async {
-    final setups = _controller.savedSetups;
-    if (setups.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No saved setups to export.')),
-        );
-      }
-      return;
-    }
-
-    final exportList = setups
-        .map(
-          (s) => {
-            'name': s.name,
-            'systemPrompt': s.systemPrompt,
-            'prompt': s.initialPrompt,
-            'toolNames': s.enabledToolNames,
-            'chatMode': s.chatMode,
-            'stopAfterToolCall': s.stopAfterToolCall,
-          },
-        )
-        .toList();
-
-    final jsonStr = const JsonEncoder.withIndent('  ').convert(exportList);
-
-    final now = DateTime.now();
-    final timestamp =
-        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
-        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
-    final defaultFileName = 'playground_agents_$timestamp.json';
-
-    try {
-      final result = await FilePicker.saveFile(
-        dialogTitle: 'Export Playground Setups',
-        fileName: defaultFileName,
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        bytes: utf8.encode(jsonStr),
-      );
-
-      if (result != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Exported ${exportList.length} setup(s) to $defaultFileName.',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _importSetups() async {
-    try {
-      final result = await FilePicker.pickFiles(
-        dialogTitle: 'Import Playground Setups',
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        withData: true,
-      );
-
-      if (result == null || result.files.isEmpty) return;
-      if (!mounted) return;
-
-      final file = result.files.first;
-      final bytes = file.bytes;
-      if (bytes == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to read file.')));
-        return;
-      }
-
-      final jsonStr = utf8.decode(bytes);
-      final decoded = jsonDecode(jsonStr);
-
-      if (decoded is! List) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Invalid file format: expected a JSON array.'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-        return;
-      }
-
-      // Gather all currently available tool names
-      final availableToolNames = _getToolsetGroups()
-          .expand((g) => g.tools)
-          .map((t) => t.name)
-          .toSet();
-
-      // Build a set of existing setup names (case-insensitive) to skip duplicates
-      final existingNames = _controller.savedSetups
-          .map((s) => s.name.trim().toLowerCase())
-          .toSet();
-
-      final imported = <SavedPlaygroundSetup>[];
-      final allMissingTools = <String>{};
-      final skippedNames = <String>[];
-      int skippedCount = 0;
-
-      for (final item in decoded) {
-        if (item is! Map<String, dynamic>) continue;
-
-        final name = (item['name'] as String?)?.trim() ?? 'Imported Setup';
-
-        // Skip if a setup with the same name already exists
-        if (existingNames.contains(name.toLowerCase())) {
-          skippedNames.add(name);
-          skippedCount++;
-          continue;
-        }
-        final systemPrompt = (item['systemPrompt'] as String?) ?? '';
-        final prompt = (item['prompt'] as String?) ?? '';
-        final toolNames =
-            (item['toolNames'] as List<dynamic>?)
-                ?.map((t) => t.toString())
-                .toList() ??
-            <String>[];
-        final chatMode = item['chatMode'] as bool? ?? false;
-        final stopAfterToolCall = item['stopAfterToolCall'] as bool? ?? false;
-
-        // Filter to only available tools, track missing ones
-        final validTools = <String>[];
-        for (final t in toolNames) {
-          if (availableToolNames.contains(t)) {
-            validTools.add(t);
-          } else {
-            allMissingTools.add(t);
-          }
-        }
-
-        imported.add(
-          SavedPlaygroundSetup(
-            id: const Uuid().v4(),
-            name: '$name (imported)',
-            createdAt: DateTime.now(),
-            systemPrompt: systemPrompt,
-            initialPrompt: prompt,
-            enabledToolNames: validTools,
-            chatMode: chatMode,
-            stopAfterToolCall: stopAfterToolCall,
-            useCustomLlm: false,
-          ),
-        );
-      }
-
-      if (imported.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No valid setups found in the file.')),
-          );
-        }
-        return;
-      }
-
-      // Save all imported setups
-      for (final setup in imported) {
-        await _controller.saveSetup(setup);
-      }
-
-      if (mounted) {
-        final msg = StringBuffer('Imported ${imported.length} setup(s).');
-        if (skippedCount > 0) {
-          msg.write(' Skipped $skippedCount duplicate(s).');
-        }
-        if (allMissingTools.isNotEmpty) {
-          // Show a warning dialog for missing tools
-          _showImportMissingToolsWarning(
-            allMissingTools.toList()..sort(),
-            imported.length,
-          );
-        }
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(msg.toString())));
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Import failed: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showImportMissingToolsWarning(
-    List<String> missingTools,
-    int importedCount,
-  ) {
+  void _showSaveSkillDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Tools Not Available')),
-          ],
-        ),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Imported $importedCount setup(s). The following ${missingTools.length} tool(s) are not available in this environment and were removed:',
-              ),
-              const SizedBox(height: 12),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: missingTools.length,
-                  itemBuilder: (_, i) => ListTile(
-                    dense: true,
-                    leading: Icon(
-                      Icons.block,
-                      size: 16,
-                      color: Colors.red.shade400,
-                    ),
-                    title: Text(
-                      missingTools[i],
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+      builder: (ctx) => SkillSaveDialog(controller: _controller),
+    );
+  }
+
+  void _showLoadSkillDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SkillLoadDialog(controller: _controller),
     );
   }
 
@@ -1393,7 +1147,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
       final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
         filename,
       );
-      fileExists = await File(fullPath).exists() ||
+      fileExists =
+          await File(fullPath).exists() ||
           (model.url.isNotEmpty && await File(model.url).exists());
     }
 
@@ -1486,7 +1241,8 @@ class _McpPlaygroundState extends State<McpPlayground> {
       final fullPath = await EmbeddedModelManager.instance.fullPathForFilename(
         filename,
       );
-      fileExists = await File(fullPath).exists() ||
+      fileExists =
+          await File(fullPath).exists() ||
           (modelToLoad.url.isNotEmpty && await File(modelToLoad.url).exists());
     }
 
@@ -2453,14 +2209,14 @@ class _McpPlaygroundState extends State<McpPlayground> {
             onPressed: _showSaveSetupDialog,
           ),
           IconButton(
-            icon: const Icon(Icons.file_upload_outlined),
-            tooltip: 'Export setups as JSON',
-            onPressed: _exportSetups,
+            icon: const Icon(Icons.bookmark_add_outlined),
+            tooltip: 'Save as Skill',
+            onPressed: _showSaveSkillDialog,
           ),
           IconButton(
-            icon: const Icon(Icons.file_download_outlined),
-            tooltip: 'Import setups from JSON',
-            onPressed: _importSetups,
+            icon: const Icon(Icons.bookmarks_outlined),
+            tooltip: 'Load Skill',
+            onPressed: _showLoadSkillDialog,
           ),
         ],
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
@@ -2496,9 +2252,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
           } else if (val == 'save') {
             _showSaveSetupDialog();
           } else if (val == 'export') {
-            _exportSetups();
+            _showSaveSkillDialog();
           } else if (val == 'import') {
-            _importSetups();
+            _showLoadSkillDialog();
           } else if (val == 'catalog') {
             RegisteredToolsDialog.show(context, _controller);
           } else if (val == 'inspector') {

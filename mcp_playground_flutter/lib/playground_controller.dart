@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import 'package:mcp_playground_dart/mcp_playground_dart.dart';
 import 'src/utils/mime_utils.dart';
 import 'src/services/embedded_llm/embedded_llm_adapter.dart';
+import 'src/skills/file_system_skill_storage_adapter.dart';
+import 'src/skills/web_skill_storage_adapter.dart';
 
 /// Abstract delegate for storing and loading LLM configuration, server registry, and saved setups.
 abstract class McpPlaygroundStorageDelegate {
@@ -61,6 +63,12 @@ abstract class McpPlaygroundStorageDelegate {
 
   /// Loads the saved server catalog timestamp.
   Future<int?> loadServerCatalogTimestamp() async => null;
+
+  /// Saves the root directory path for skill ZIP storage (desktop/mobile).
+  Future<void> saveSkillsRootPath(String path) async {}
+
+  /// Loads the root directory path for skill ZIP storage.
+  Future<String?> loadSkillsRootPath() async => null;
 }
 
 /// A default implementation of [McpPlaygroundStorageDelegate] using SharedPreferences.
@@ -216,6 +224,18 @@ class SharedPreferencesStorageDelegate implements McpPlaygroundStorageDelegate {
     final prefs = await _instance;
     return prefs.getInt('mcp_playground_server_catalog_ts');
   }
+
+  @override
+  Future<void> saveSkillsRootPath(String path) async {
+    final prefs = await _instance;
+    await prefs.setString('mcp_playground_skills_root_path', path);
+  }
+
+  @override
+  Future<String?> loadSkillsRootPath() async {
+    final prefs = await _instance;
+    return prefs.getString('mcp_playground_skills_root_path');
+  }
 }
 
 /// Controller managing the state of the AI Agent Playground, chat messages, active tool loop execution, and server manager.
@@ -269,6 +289,40 @@ class PlaygroundController extends ChangeNotifier {
   final List<SavedPlaygroundSetup> _savedSetups = [];
   final MultiMCPManager _mcpManager = MultiMCPManager();
   final Uuid _uuid = const Uuid();
+
+  SkillStorageAdapter? _skillStorage;
+
+  /// The [SkillStorageAdapter] used for saving/loading skill ZIPs.
+  ///
+  /// Auto-selects a platform-appropriate default:
+  /// - Desktop/mobile: [FileSystemSkillStorageAdapter] using [skillsRootPath]
+  /// - Web: [WebSkillStorageAdapter]
+  ///
+  /// Users may inject a custom adapter via [setSkillStorageAdapter].
+  SkillStorageAdapter get skillStorage {
+    if (_skillStorage != null) return _skillStorage!;
+
+    if (kIsWeb) {
+      _skillStorage = WebSkillStorageAdapter();
+    } else {
+      _skillStorage = FileSystemSkillStorageAdapter(
+        rootPath:
+            _skillsRootPath ??
+            '${Directory.systemTemp.path}${Platform.pathSeparator}mcp_playground_skills',
+      );
+    }
+    return _skillStorage!;
+  }
+
+  /// Allows injecting a custom [SkillStorageAdapter] (e.g., DB-backed).
+  void setSkillStorageAdapter(SkillStorageAdapter adapter) {
+    _skillStorage = adapter;
+  }
+
+  String? _skillsRootPath;
+
+  /// The root directory where skill ZIPs are stored (desktop/mobile only).
+  String? get skillsRootPath => _skillsRootPath;
 
   /// Creates a new [PlaygroundController] instance.
   PlaygroundController({
@@ -394,61 +448,27 @@ class PlaygroundController extends ChangeNotifier {
   List<MCPTool> get externalTools => _mcpManager.availableTools;
 
   static void _registerEmbeddedLlmHandlers() {
-    LLMService.embeddedHandler = ({
-      required LlmConfig config,
-      required List<ChatMessage> messages,
-      required List<MCPTool> tools,
-      String? systemPrompt,
-    }) async {
-      final combinedMessages = <ChatMessage>[];
-      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-        combinedMessages.add(
-          ChatMessage(
-            id: 'system_prompt',
-            content: systemPrompt,
-            role: ChatRole.system,
-            timestamp: DateTime.now(),
-          ),
-        );
-      }
-      combinedMessages.addAll(messages);
+    LLMService.embeddedHandler =
+        ({
+          required LlmConfig config,
+          required List<ChatMessage> messages,
+          required List<MCPTool> tools,
+          String? systemPrompt,
+        }) async {
+          final combinedMessages = <ChatMessage>[];
+          if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+            combinedMessages.add(
+              ChatMessage(
+                id: 'system_prompt',
+                content: systemPrompt,
+                role: ChatRole.system,
+                timestamp: DateTime.now(),
+              ),
+            );
+          }
+          combinedMessages.addAll(messages);
 
-      return await EmbeddedLlmAdapter.instance.generateResponse(
-        messages: combinedMessages,
-        availableTools: tools,
-        temperature: config.temperature,
-        maxTokens: config.maxTokens > 0 ? config.maxTokens : 1024,
-        topK: config.topK ?? 40,
-        topP: config.topP ?? 0.9,
-        penalty: config.repeatPenalty ?? 1.15,
-      );
-    };
-
-    LLMService.embeddedStreamHandler = ({
-      required LlmConfig config,
-      required List<ChatMessage> messages,
-      required List<MCPTool> tools,
-      String? systemPrompt,
-    }) {
-      final controller = StreamController<LLMStreamChunk>();
-
-      final combinedMessages = <ChatMessage>[];
-      if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
-        combinedMessages.add(
-          ChatMessage(
-            id: 'system_prompt',
-            content: systemPrompt,
-            role: ChatRole.system,
-            timestamp: DateTime.now(),
-          ),
-        );
-      }
-      combinedMessages.addAll(messages);
-
-      // Run in the background
-      runZonedGuarded(() async {
-        try {
-          final response = await EmbeddedLlmAdapter.instance.generateResponse(
+          return await EmbeddedLlmAdapter.instance.generateResponse(
             messages: combinedMessages,
             availableTools: tools,
             temperature: config.temperature,
@@ -456,31 +476,71 @@ class PlaygroundController extends ChangeNotifier {
             topK: config.topK ?? 40,
             topP: config.topP ?? 0.9,
             penalty: config.repeatPenalty ?? 1.15,
-            onStreamChunk: (textChunk) {
-              controller.add(LLMStreamChunk(textDelta: textChunk));
+          );
+        };
+
+    LLMService.embeddedStreamHandler =
+        ({
+          required LlmConfig config,
+          required List<ChatMessage> messages,
+          required List<MCPTool> tools,
+          String? systemPrompt,
+        }) {
+          final controller = StreamController<LLMStreamChunk>();
+
+          final combinedMessages = <ChatMessage>[];
+          if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+            combinedMessages.add(
+              ChatMessage(
+                id: 'system_prompt',
+                content: systemPrompt,
+                role: ChatRole.system,
+                timestamp: DateTime.now(),
+              ),
+            );
+          }
+          combinedMessages.addAll(messages);
+
+          // Run in the background
+          runZonedGuarded(
+            () async {
+              try {
+                final response = await EmbeddedLlmAdapter.instance
+                    .generateResponse(
+                      messages: combinedMessages,
+                      availableTools: tools,
+                      temperature: config.temperature,
+                      maxTokens: config.maxTokens > 0 ? config.maxTokens : 1024,
+                      topK: config.topK ?? 40,
+                      topP: config.topP ?? 0.9,
+                      penalty: config.repeatPenalty ?? 1.15,
+                      onStreamChunk: (textChunk) {
+                        controller.add(LLMStreamChunk(textDelta: textChunk));
+                      },
+                    );
+                controller.add(
+                  LLMStreamChunk(
+                    textDelta: '',
+                    isDone: true,
+                    finalResponse: response,
+                  ),
+                );
+                await controller.close();
+              } catch (e, st) {
+                controller.addError(e, st);
+                await controller.close();
+              }
+            },
+            (error, stack) {
+              if (!controller.isClosed) {
+                controller.addError(error, stack);
+                controller.close();
+              }
             },
           );
-          controller.add(
-            LLMStreamChunk(
-              textDelta: '',
-              isDone: true,
-              finalResponse: response,
-            ),
-          );
-          await controller.close();
-        } catch (e, st) {
-          controller.addError(e, st);
-          await controller.close();
-        }
-      }, (error, stack) {
-        if (!controller.isClosed) {
-          controller.addError(error, stack);
-          controller.close();
-        }
-      });
 
-      return controller.stream;
-    };
+          return controller.stream;
+        };
   }
 
   Future<void> _initAndLoad() async {
@@ -1057,7 +1117,9 @@ class PlaygroundController extends ChangeNotifier {
                   textBuffer.write(chunk.textDelta);
                   final idx = _messages.indexWhere((m) => m.id == assistantId);
                   if (idx != -1) {
-                    _messages[idx] = streamMsg.copyWith(content: textBuffer.toString());
+                    _messages[idx] = streamMsg.copyWith(
+                      content: textBuffer.toString(),
+                    );
                     notifyListeners();
                   }
                 }
@@ -1070,7 +1132,8 @@ class PlaygroundController extends ChangeNotifier {
             }
 
             if (_cancelRequested) break;
-            response = finalResponse ?? LLMResponse(text: textBuffer.toString());
+            response =
+                finalResponse ?? LLMResponse(text: textBuffer.toString());
           } else {
             response = await LLMService.generate(
               config: activeLlmConfig,

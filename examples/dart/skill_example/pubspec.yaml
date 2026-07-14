@@ -1,0 +1,19 @@
+name: mcp_skill_example
+description: Dart example demonstrating SKILL.md import and multi-turn agent execution with web search and chart generation.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+  http: ^1.6.0
+
+dependency_overrides:
+  mcp_playground_dart:
+    path: ../../../mcp_playground_dart
+
+dev_dependencies:
+  lints: ^3.0.0
