@@ -778,262 +778,15 @@ class _McpPlaygroundState extends State<McpPlayground> {
     });
   }
 
-  // Save current setup dialog
-  void _showSaveSetupDialog() {
-    SavedPlaygroundSetup? loadedSetup;
-    if (_loadedSetupId != null) {
-      for (final s in _controller.savedSetups) {
-        if (s.id == _loadedSetupId) {
-          loadedSetup = s;
-          break;
-        }
-      }
-    }
-    final nameCtrl = TextEditingController(text: loadedSetup?.name ?? '');
-    bool saveAsNew = _loadedSetupId == null;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx2, setDialogState) {
-          return AlertDialog(
-            title: const Text('Save Setup Configuration'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Configuration Name',
-                    hintText: 'e.g. My Playground Setup',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                if (_loadedSetupId != null) ...[
-                  const SizedBox(height: 12),
-                  CheckboxListTile(
-                    title: const Text('Save as a new configuration'),
-                    value: saveAsNew,
-                    onChanged: (val) {
-                      setDialogState(() {
-                        saveAsNew = val ?? false;
-                      });
-                    },
-                    controlAffinity: ListTileControlAffinity.leading,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final name = nameCtrl.text.trim();
-                  if (name.isEmpty) return;
-
-                  final id = saveAsNew ? const Uuid().v4() : _loadedSetupId!;
-                  final enabled = _controller.enabledToolNames;
-                  final allTools = _getToolsetGroups()
-                      .expand((g) => g.tools)
-                      .map((t) => t.name)
-                      .toList();
-                  final enabledTools = allTools
-                      .where((t) => enabled.contains(t))
-                      .toList();
-
-                  final setup = SavedPlaygroundSetup(
-                    id: id,
-                    name: name,
-                    createdAt: DateTime.now(),
-                    systemPrompt: _systemPromptCtrl.text,
-                    initialPrompt: _initialPromptCtrl.text,
-                    enabledToolNames: enabledTools,
-                    chatMode: _chatMode,
-                    stopAfterToolCall: _stopAfterToolCall,
-                    useCustomLlm: _useCustomLlm,
-                    customLlmConfig: _useCustomLlm
-                        ? LlmConfig(
-                            provider: _customProvider,
-                            model: _customModelCtrl.text,
-                            apiKey: _customApiKeyCtrl.text,
-                            baseUrl: _customBaseUrlCtrl.text,
-                            temperature:
-                                double.tryParse(_customTempCtrl.text) ?? 0.2,
-                            maxTokens:
-                                int.tryParse(_customMaxTokensCtrl.text) ?? 0,
-                            maxToolOutputSize:
-                                int.tryParse(
-                                  _customMaxToolOutputSizeCtrl.text,
-                                ) ??
-                                2560000,
-                            tokenWarningThreshold:
-                                int.tryParse(
-                                  _customTokenWarningThresholdCtrl.text,
-                                ) ??
-                                1500000,
-                            topP: double.tryParse(_customTopPCtrl.text),
-                            topK: int.tryParse(_customTopKCtrl.text),
-                            repeatPenalty: double.tryParse(
-                              _customRepeatPenaltyCtrl.text,
-                            ),
-                            seed: int.tryParse(_customSeedCtrl.text),
-                            thinking: _customThinking,
-                            isSlm: _customIsSlm,
-                            isMultiModal: _customIsMultiModal,
-                            useNativeToolCall: _customUseNativeTool,
-                          )
-                        : null,
-                  );
-
-                  _controller.saveSetup(setup);
-                  setState(() {
-                    _loadedSetupId = id;
-                  });
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Setup "$name" saved successfully.'),
-                    ),
-                  );
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // Load setups dialog
-  void _showLoadSetupsDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Load Setup Configuration'),
-        content: SizedBox(
-          width: 400,
-          height: 300,
-          child: _controller.savedSetups.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No saved configurations found.',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: _controller.savedSetups.length,
-                  itemBuilder: (c, idx) {
-                    final setup = _controller.savedSetups[idx];
-                    return ListTile(
-                      title: Text(
-                        setup.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        'Created: ${setup.createdAt.toString().split('.').first}',
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          final wasLoaded = _loadedSetupId == setup.id;
-                          _controller.deleteSetup(setup.id);
-                          if (wasLoaded) {
-                            setState(() {
-                              _loadedSetupId = null;
-                            });
-                          }
-                          Navigator.pop(ctx);
-                          _showLoadSetupsDialog();
-                        },
-                      ),
-                      onTap: () {
-                        // Load setup configuration
-                        setState(() {
-                          _loadedSetupId = setup.id;
-                          _systemPromptCtrl.text = setup.systemPrompt;
-                          _initialPromptCtrl.text = setup.initialPrompt;
-                          _chatMode = setup.chatMode;
-                          _stopAfterToolCall = setup.stopAfterToolCall;
-                          _useCustomLlm = setup.useCustomLlm;
-
-                          if (setup.customLlmConfig != null) {
-                            final custom = setup.customLlmConfig!;
-                            _customProvider = custom.provider;
-                            _customModelCtrl.text = custom.model;
-                            _customApiKeyCtrl.text = custom.apiKey;
-                            _customBaseUrlCtrl.text = custom.baseUrl;
-                            _customTempCtrl.text = custom.temperature
-                                .toString();
-                            _customMaxTokensCtrl.text = custom.maxTokens
-                                .toString();
-                            _customMaxToolOutputSizeCtrl.text = custom
-                                .maxToolOutputSize
-                                .toString();
-                            _customTokenWarningThresholdCtrl.text = custom
-                                .tokenWarningThreshold
-                                .toString();
-                            _customTopKCtrl.text =
-                                custom.topK?.toString() ?? '';
-                            _customTopPCtrl.text =
-                                custom.topP?.toString() ?? '';
-                            _customRepeatPenaltyCtrl.text =
-                                custom.repeatPenalty?.toString() ?? '';
-                            _customSeedCtrl.text =
-                                custom.seed?.toString() ?? '';
-                            _customThinking = custom.thinking;
-                            _customIsSlm = custom.isSlm;
-                            _customIsMultiModal = custom.isMultiModal;
-                            _customUseNativeTool = custom.useNativeToolCall;
-                            _customUseStreaming = custom.useStreaming;
-                          }
-
-                          // Load tool selections
-                          _controller.updateEnabledTools(
-                            setup.enabledToolNames.toSet(),
-                          );
-
-                          if (_playgroundStarted) {
-                            _controller.systemPrompt = setup.systemPrompt;
-                            _controller.chatMode = setup.chatMode;
-                            _controller.stopAfterToolCall =
-                                setup.stopAfterToolCall;
-                            _controller.customLlmConfig = setup.customLlmConfig;
-                            _controller.clearChat();
-                          }
-                        });
-                        Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Loaded setup "${setup.name}".'),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showSaveSkillDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => SkillSaveDialog(controller: _controller),
+      builder: (ctx) => SkillSaveDialog(
+        controller: _controller,
+        unsentInput: _inputCtrl.text.trim().isNotEmpty
+            ? _inputCtrl.text.trim()
+            : null,
+      ),
     );
   }
 
@@ -2200,23 +1953,13 @@ class _McpPlaygroundState extends State<McpPlayground> {
           ),
           IconButton(
             icon: const Icon(Icons.bookmarks_outlined),
-            tooltip: l10n.get('loadTooltip'),
-            onPressed: _showLoadSetupsDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: l10n.get('saveTooltip'),
-            onPressed: _showSaveSetupDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: 'Save as Skill',
-            onPressed: _showSaveSkillDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmarks_outlined),
             tooltip: 'Load Skill',
             onPressed: _showLoadSkillDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.save_outlined),
+            tooltip: 'Save Skill',
+            onPressed: _showSaveSkillDialog,
           ),
         ],
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
@@ -2247,13 +1990,9 @@ class _McpPlaygroundState extends State<McpPlayground> {
         onSelected: (val) {
           if (val == 'clear') {
             _clearSetupInputs();
-          } else if (val == 'load') {
-            _showLoadSetupsDialog();
-          } else if (val == 'save') {
-            _showSaveSetupDialog();
-          } else if (val == 'export') {
+          } else if (val == 'saveSkill') {
             _showSaveSkillDialog();
-          } else if (val == 'import') {
+          } else if (val == 'loadSkill') {
             _showLoadSkillDialog();
           } else if (val == 'catalog') {
             RegisteredToolsDialog.show(context, _controller);
@@ -2274,42 +2013,22 @@ class _McpPlaygroundState extends State<McpPlayground> {
               ),
             ),
             PopupMenuItem(
-              value: 'load',
+              value: 'loadSkill',
               child: Row(
                 children: [
                   const Icon(Icons.bookmarks_outlined, size: 20),
                   const SizedBox(width: 12),
-                  Text(l10n.get('loadSetup')),
+                  const Text('Load Skill'),
                 ],
               ),
             ),
             PopupMenuItem(
-              value: 'save',
+              value: 'saveSkill',
               child: Row(
                 children: [
-                  const Icon(Icons.bookmark_add_outlined, size: 20),
+                  const Icon(Icons.save_outlined, size: 20),
                   const SizedBox(width: 12),
-                  Text(l10n.get('saveSetup')),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'export',
-              child: Row(
-                children: [
-                  const Icon(Icons.file_upload_outlined, size: 20),
-                  const SizedBox(width: 12),
-                  Text(l10n.get('exportJson')),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'import',
-              child: Row(
-                children: [
-                  const Icon(Icons.file_download_outlined, size: 20),
-                  const SizedBox(width: 12),
-                  Text(l10n.get('importJson')),
+                  const Text('Save Skill'),
                 ],
               ),
             ),

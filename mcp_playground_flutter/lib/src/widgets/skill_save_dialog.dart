@@ -5,10 +5,19 @@ import '../skills/skill_zip_exporter.dart';
 import '../skills/skill_zip_importer.dart';
 
 /// Dialog for saving the current playground state as a skill ZIP.
+///
+/// Gathers all user prompts from the chat conversation history,
+/// flattens subprompts, includes the unsent input if present,
+/// and serializes as a multi-step skill.
 class SkillSaveDialog extends StatefulWidget {
   final PlaygroundController controller;
+  final String? unsentInput;
 
-  const SkillSaveDialog({super.key, required this.controller});
+  const SkillSaveDialog({
+    super.key,
+    required this.controller,
+    this.unsentInput,
+  });
 
   @override
   State<SkillSaveDialog> createState() => _SkillSaveDialogState();
@@ -17,7 +26,6 @@ class SkillSaveDialog extends StatefulWidget {
 class _SkillSaveDialogState extends State<SkillSaveDialog> {
   final _nameCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
-  bool _wholeWorkflow = true;
   bool _isSaving = false;
   String? _errorMessage;
 
@@ -26,6 +34,61 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
     _nameCtrl.dispose();
     _descriptionCtrl.dispose();
     super.dispose();
+  }
+
+  /// Gathers all user prompts from the conversation, flattens subprompts,
+  /// includes unsent input, and builds prompt steps with per-turn tool info.
+  List<SubPromptStep> _gatherPromptSteps() {
+    final steps = <SubPromptStep>[];
+
+    // Collect user messages from chat history (skip tool-result "user" messages)
+    for (final msg in widget.controller.messages) {
+      if (msg.role != ChatRole.user) continue;
+      final text = msg.content.trim();
+      if (text.isEmpty) continue;
+
+      // Parse subprompts from this message (may contain ++#++ separators)
+      final subSteps = parseSubPromptSteps(text);
+      for (final sub in subSteps) {
+        if (sub.text.trim().isNotEmpty) {
+          steps.add(sub);
+        }
+      }
+    }
+
+    // Include the currently typed (unsent) prompt if present
+    if (widget.unsentInput != null && widget.unsentInput!.trim().isNotEmpty) {
+      final unsentSteps = parseSubPromptSteps(widget.unsentInput!.trim());
+      for (final sub in unsentSteps) {
+        if (sub.text.trim().isNotEmpty) {
+          // Use current enabled tools for unsent prompt
+          final currentTools = widget.controller.enabledToolNames.isEmpty
+              ? null
+              : widget.controller.enabledToolNames.toList();
+          steps.add(
+            SubPromptStep(
+              text: sub.text,
+              enabledToolNames: sub.enabledToolNames ?? currentTools,
+              stopAfterToolCall: sub.stopAfterToolCall,
+            ),
+          );
+        }
+      }
+    }
+
+    // If no steps found, create a single step from the setup
+    if (steps.isEmpty) {
+      steps.add(
+        SubPromptStep(
+          text: '',
+          enabledToolNames: widget.controller.enabledToolNames.isEmpty
+              ? null
+              : widget.controller.enabledToolNames.toList(),
+        ),
+      );
+    }
+
+    return steps;
   }
 
   Future<void> _save() async {
@@ -38,42 +101,37 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
     });
 
     try {
-      final exporter = SkillExporter();
       final zipExporter = SkillZipExporter();
 
-      SkillManifest manifest;
-      if (_wholeWorkflow && widget.controller.messages.isNotEmpty) {
-        // Export conversation as skill
-        manifest = exporter.fromConversation(
-          name: name,
-          description: _descriptionCtrl.text.trim(),
-          systemPrompt: widget.controller.systemPrompt,
-          conversation: widget.controller.messages,
-          servers: widget.controller.servers,
-          localTools: widget.controller.localTools,
-          enabledToolNames: widget.controller.enabledToolNames,
-        );
-      } else {
-        // Export the current active setup
-        final setup = SavedPlaygroundSetup(
-          id: 'export_${DateTime.now().millisecondsSinceEpoch}',
-          name: name,
-          description: _descriptionCtrl.text.trim(),
-          createdAt: DateTime.now(),
-          systemPrompt: widget.controller.systemPrompt,
-          initialPrompt: '',
-          enabledToolNames: widget.controller.enabledToolNames.toList(),
+      // Gather prompt steps from conversation + unsent input
+      final promptSteps = _gatherPromptSteps();
+
+      // Build manifest
+      final manifest = SkillManifest(
+        name: _sanitizeName(name),
+        description: _descriptionCtrl.text.trim(),
+        version: '1.0.0',
+        author: 'mcp_playground',
+        systemPrompt: widget.controller.systemPrompt,
+        promptSteps: promptSteps
+            .map(
+              (s) => SkillPromptStep(
+                text: s.text,
+                enabledToolNames: s.enabledToolNames,
+                stopAfterToolCall: s.stopAfterToolCall,
+              ),
+            )
+            .toList(),
+        tools: [],
+        mcpPlaygroundMeta: McpPlaygroundSkillMetadata(
           chatMode: widget.controller.chatMode,
           stopAfterToolCall: widget.controller.stopAfterToolCall,
           useCustomLlm: widget.controller.customLlmConfig != null,
-          customLlmConfig: widget.controller.customLlmConfig,
-        );
-        manifest = exporter.fromSetup(
-          setup,
-          servers: widget.controller.servers,
-          localTools: widget.controller.localTools,
-        );
-      }
+          createdAt: DateTime.now(),
+          isMultiTurn: promptSteps.length > 1,
+        ),
+        isMultiTurn: promptSteps.length > 1,
+      );
 
       final zipBytes = await zipExporter.exportToZip(manifest: manifest);
 
@@ -87,7 +145,9 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Skill "$name" saved successfully.'),
+            content: Text(
+              'Skill "$name" saved (${promptSteps.length} step${promptSteps.length == 1 ? '' : 's'}).',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -104,10 +164,10 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final hasConversation = widget.controller.messages.isNotEmpty;
+    final stepCount = _gatherPromptSteps().length;
 
     return AlertDialog(
-      title: const Text('Save as Skill'),
+      title: const Text('Save Skill'),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -133,41 +193,37 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-            if (hasConversation) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Export Scope',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withAlpha(80),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(height: 8),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment<bool>(
-                    value: true,
-                    label: Text('Whole workflow'),
-                    icon: Icon(Icons.history, size: 18),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  ButtonSegment<bool>(
-                    value: false,
-                    label: Text('Setup only'),
-                    icon: Icon(Icons.tune, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      stepCount > 1
+                          ? '$stepCount prompt steps will be captured from conversation history'
+                          : 'Single prompt will be saved',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ],
-                selected: {_wholeWorkflow},
-                onSelectionChanged: (v) =>
-                    setState(() => _wholeWorkflow = v.first),
               ),
-              const SizedBox(height: 4),
-              Text(
-                _wholeWorkflow
-                    ? 'All conversation turns will be captured as prompt steps'
-                    : 'Only the current system prompt + tools configuration',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+            ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Container(
@@ -202,6 +258,14 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
         ),
       ],
     );
+  }
+
+  String _sanitizeName(String name) {
+    return name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
   }
 }
 
@@ -327,7 +391,7 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Skill "$skillName" loaded, but ${missingTools.length} tool(s) are not available:',
+                'Skill "$skillName" loaded, but ${missingTools.length} tool(s) not available:',
               ),
               const SizedBox(height: 12),
               ...missingTools.map(
@@ -379,7 +443,7 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
             : _skills.isEmpty
             ? const Center(
                 child: Text(
-                  'No saved skills found.\n\nUse "Save as Skill" to create one.',
+                  'No saved skills found.\n\nUse "Save Skill" to create one.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey),
                 ),
@@ -393,10 +457,27 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
                       skill.name,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text(
-                      skill.description ?? 'No description',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (skill.description != null &&
+                            skill.description!.isNotEmpty)
+                          Text(
+                            skill.description!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        Text(
+                          skill.zipFileName,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                     trailing: IconButton(
                       icon: const Icon(
