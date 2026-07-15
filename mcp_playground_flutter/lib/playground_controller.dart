@@ -548,7 +548,8 @@ class PlaygroundController extends ChangeNotifier {
     notifyListeners();
     try {
       final savedLlm = await _storage.loadLlmConfig();
-      if (savedLlm != null) {
+      // Only use saved config if the initial config was not explicitly provided
+      if (savedLlm != null && !_llmConfig.isConfigured) {
         _llmConfig = savedLlm;
       }
       final savedServers = await _storage.loadServers();

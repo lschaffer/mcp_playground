@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -33,7 +35,8 @@ class ChatBubble extends StatelessWidget {
       return _buildToolCallBubble(context, theme);
     }
 
-    if (message.type == MessageType.toolResponse && message.toolResult != null) {
+    if (message.type == MessageType.toolResponse &&
+        message.toolResult != null) {
       return _buildToolResponseBubble(context, theme);
     }
 
@@ -44,7 +47,9 @@ class ChatBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.errorContainer.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.3),
+          ),
         ),
         child: Text(
           message.content,
@@ -59,7 +64,8 @@ class ChatBubble extends StatelessWidget {
 
     final isDark = theme.brightness == Brightness.dark;
 
-    final isActive = controller != null &&
+    final isActive =
+        controller != null &&
         controller!.isGenerating &&
         controller!.messages.isNotEmpty &&
         controller!.messages.last.id == message.id;
@@ -72,14 +78,24 @@ class ChatBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser)
             CircleAvatar(
-              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.1) : theme.colorScheme.primaryContainer,
+              backgroundColor: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : theme.colorScheme.primaryContainer,
               radius: 16,
-              child: Icon(Icons.smart_toy_outlined, size: 18, color: isDark ? Colors.white : theme.colorScheme.onPrimaryContainer),
+              child: Icon(
+                Icons.smart_toy_outlined,
+                size: 18,
+                color: isDark
+                    ? Colors.white
+                    : theme.colorScheme.onPrimaryContainer,
+              ),
             ),
           const SizedBox(width: 8),
           Flexible(
@@ -87,12 +103,18 @@ class ChatBubble extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
                 color: isUser
-                    ? (isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.15) : const Color(0xFF7C3AED).withValues(alpha: 0.08))
-                    : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                    ? (isDark
+                          ? const Color(0xFF7C3AED).withValues(alpha: 0.15)
+                          : const Color(0xFF7C3AED).withValues(alpha: 0.08))
+                    : (isDark
+                          ? Colors.white.withValues(alpha: 0.04)
+                          : Colors.black.withValues(alpha: 0.03)),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isUser
-                      ? (isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.35) : const Color(0xFF7C3AED).withValues(alpha: 0.2))
+                      ? (isDark
+                            ? const Color(0xFF7C3AED).withValues(alpha: 0.35)
+                            : const Color(0xFF7C3AED).withValues(alpha: 0.2))
                       : (isDark ? Colors.white10 : Colors.black12),
                 ),
               ),
@@ -101,13 +123,20 @@ class ChatBubble extends StatelessWidget {
                 children: [
                   if (showTypingIndicator)
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                      padding: EdgeInsets.symmetric(
+                        vertical: 8.0,
+                        horizontal: 4.0,
+                      ),
                       child: _TypingIndicator(),
                     )
                   else if (_isHtmlContent(contentToShow))
                     _buildTextContent(context, contentToShow, theme)
                   else
-                    _buildMarkdownWithEmbeddedDataUris(context, contentToShow, theme),
+                    _buildMarkdownWithEmbeddedDataUris(
+                      context,
+                      contentToShow,
+                      theme,
+                    ),
                   if (message.content.trim().isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Row(
@@ -115,7 +144,9 @@ class ChatBubble extends StatelessWidget {
                       children: [
                         InkWell(
                           onTap: () {
-                            Clipboard.setData(ClipboardData(text: message.content));
+                            Clipboard.setData(
+                              ClipboardData(text: message.content),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Copied to clipboard'),
@@ -132,14 +163,16 @@ class ChatBubble extends StatelessWidget {
                                 Icon(
                                   Icons.content_copy_outlined,
                                   size: 13,
-                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                  color: theme.colorScheme.onSurfaceVariant
+                                      .withValues(alpha: 0.6),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'Copy',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                    color: theme.colorScheme.onSurfaceVariant
+                                        .withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],
@@ -156,9 +189,15 @@ class ChatBubble extends StatelessWidget {
           const SizedBox(width: 8),
           if (isUser)
             CircleAvatar(
-              backgroundColor: isDark ? const Color(0xFF7C3AED).withValues(alpha: 0.3) : theme.colorScheme.primary,
+              backgroundColor: isDark
+                  ? const Color(0xFF7C3AED).withValues(alpha: 0.3)
+                  : theme.colorScheme.primary,
               radius: 16,
-              child: Icon(Icons.person_outline, size: 18, color: isDark ? Colors.white : theme.colorScheme.onPrimary),
+              child: Icon(
+                Icons.person_outline,
+                size: 18,
+                color: isDark ? Colors.white : theme.colorScheme.onPrimary,
+              ),
             ),
         ],
       ),
@@ -173,7 +212,11 @@ class ChatBubble extends StatelessWidget {
         leading: CircleAvatar(
           backgroundColor: Colors.amber.withValues(alpha: 0.15),
           radius: 14,
-          child: const Icon(Icons.build_outlined, size: 14, color: Colors.amber),
+          child: const Icon(
+            Icons.build_outlined,
+            size: 14,
+            color: Colors.amber,
+          ),
         ),
         title: Row(
           children: [
@@ -193,10 +236,14 @@ class ChatBubble extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               onPressed: () {
-                final argsStr = const JsonEncoder.withIndent('  ').convert(message.toolArguments ?? {});
+                final argsStr = const JsonEncoder.withIndent(
+                  '  ',
+                ).convert(message.toolArguments ?? {});
                 Clipboard.setData(ClipboardData(text: argsStr));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Arguments copied to clipboard.')),
+                  const SnackBar(
+                    content: Text('Arguments copied to clipboard.'),
+                  ),
                 );
               },
             ),
@@ -208,10 +255,12 @@ class ChatBubble extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             color: theme.colorScheme.surfaceContainerLowest,
             child: Text(
-              const JsonEncoder.withIndent('  ').convert(message.toolArguments ?? {}),
+              const JsonEncoder.withIndent(
+                '  ',
+              ).convert(message.toolArguments ?? {}),
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -230,25 +279,44 @@ class ChatBubble extends StatelessWidget {
             children: [
               // Header
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2))),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.2),
+                    ),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.code, size: 20, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.code,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Tool Output',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.copy),
                       onPressed: () {
                         Clipboard.setData(ClipboardData(text: text));
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied to clipboard')),
+                        );
                       },
                       tooltip: 'Copy',
                     ),
@@ -266,7 +334,10 @@ class ChatBubble extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   child: SelectableText(
                     text,
-                    style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ),
               ),
@@ -280,26 +351,41 @@ class ChatBubble extends StatelessWidget {
   Widget _buildToolResponseBubble(BuildContext context, ThemeData theme) {
     final contents = message.toolResult?.content ?? [];
     final isError = message.toolResult?.isError ?? false;
-    final textLength = contents.fold(0, (sum, c) => sum + (c.text?.length ?? 0));
+    final textLength = contents.fold(
+      0,
+      (sum, c) => sum + (c.text?.length ?? 0),
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
       child: Material(
-        color: isError ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+        color: isError
+            ? Colors.red.withValues(alpha: 0.1)
+            : Colors.green.withValues(alpha: 0.1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: isError ? Colors.red.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3)),
+          side: BorderSide(
+            color: isError
+                ? Colors.red.withValues(alpha: 0.3)
+                : Colors.green.withValues(alpha: 0.3),
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: ExpansionTile(
           dense: true,
           initiallyExpanded: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          childrenPadding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+          childrenPadding: const EdgeInsets.only(
+            left: 12,
+            right: 12,
+            bottom: 12,
+          ),
           iconColor: isError ? Colors.red[700] : Colors.green[700],
           collapsedIconColor: isError ? Colors.red[700] : Colors.green[700],
           leading: CircleAvatar(
-            backgroundColor: isError ? Colors.red.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.15),
+            backgroundColor: isError
+                ? Colors.red.withValues(alpha: 0.15)
+                : Colors.green.withValues(alpha: 0.15),
             radius: 14,
             child: Icon(
               isError ? Icons.error_outline : Icons.check_circle_outline,
@@ -311,7 +397,9 @@ class ChatBubble extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  isError ? 'Tool Error: ${message.toolName}' : 'Tool Result: ${message.toolName}',
+                  isError
+                      ? 'Tool Error: ${message.toolName}'
+                      : 'Tool Result: ${message.toolName}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
@@ -319,43 +407,53 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ),
               ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$textLength chars',
+                  style: TextStyle(fontSize: 10, color: Colors.grey[700]),
+                ),
               ),
-              child: Text(
-                '$textLength chars',
-                style: TextStyle(fontSize: 10, color: Colors.grey[700]),
+            ],
+          ),
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              color: theme.colorScheme.surfaceContainerLowest,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: contents.map((c) {
+                  if (c.type == 'image' ||
+                      c.mimeType?.startsWith('image/') == true) {
+                    return _buildImageContent(
+                      context,
+                      c.data ?? c.text ?? '',
+                      c.mimeType,
+                      theme,
+                    );
+                  } else {
+                    return _buildTextContent(context, c.text ?? '', theme);
+                  }
+                }).toList(),
               ),
             ),
           ],
         ),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            color: theme.colorScheme.surfaceContainerLowest,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: contents.map((c) {
-                if (c.type == 'image' || c.mimeType?.startsWith('image/') == true) {
-                  return _buildImageContent(context, c.data ?? c.text ?? '', c.mimeType, theme);
-                } else {
-                  return _buildTextContent(context, c.text ?? '', theme);
-                }
-              }).toList(),
-            ),
-          )
-        ],
       ),
-    ),
-  );
-}
+    );
+  }
 
-  Future<void> _downloadImage(BuildContext context, Uint8List bytes, String? mimeType) async {
+  Future<void> _downloadImage(
+    BuildContext context,
+    Uint8List bytes,
+    String? mimeType,
+  ) async {
     try {
       final isMobile = !kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS);
       final extension = mimeType != null && mimeType.contains('/')
@@ -383,17 +481,23 @@ class ChatBubble extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save image: $e')));
       }
     }
   }
 
-  Future<void> _downloadFile(BuildContext context, Uint8List bytes, String fileName) async {
+  Future<void> _downloadFile(
+    BuildContext context,
+    Uint8List bytes,
+    String fileName,
+  ) async {
     try {
       final isMobile = !kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS);
-      final extension = fileName.contains('.') ? fileName.split('.').last : 'bin';
+      final extension = fileName.contains('.')
+          ? fileName.split('.').last
+          : 'bin';
 
       final resultPath = await FilePicker.saveFile(
         fileName: fileName,
@@ -415,14 +519,19 @@ class ChatBubble extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
       }
     }
   }
 
-  Widget _buildImageContent(BuildContext context, String base64Data, String? mimeType, ThemeData theme) {
+  Widget _buildImageContent(
+    BuildContext context,
+    String base64Data,
+    String? mimeType,
+    ThemeData theme,
+  ) {
     try {
       String cleanBase64 = base64Data.trim();
       if (cleanBase64.startsWith('data:')) {
@@ -439,7 +548,9 @@ class ChatBubble extends StatelessWidget {
             constraints: const BoxConstraints(maxHeight: 400),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -453,10 +564,21 @@ class ChatBubble extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.broken_image, size: 32, color: Colors.red),
+                          const Icon(
+                            Icons.broken_image,
+                            size: 32,
+                            color: Colors.red,
+                          ),
                           const SizedBox(height: 8),
-                          const Text('Failed to display image', style: TextStyle(color: Colors.red)),
-                          if (mimeType != null) Text('MIME type: $mimeType', style: theme.textTheme.bodySmall),
+                          const Text(
+                            'Failed to display image',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          if (mimeType != null)
+                            Text(
+                              'MIME type: $mimeType',
+                              style: theme.textTheme.bodySmall,
+                            ),
                         ],
                       ),
                     );
@@ -469,7 +591,9 @@ class ChatBubble extends StatelessWidget {
             top: 16,
             right: 16,
             child: Material(
-              color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.8),
+              color: theme.colorScheme.surfaceContainerHigh.withValues(
+                alpha: 0.8,
+              ),
               borderRadius: BorderRadius.circular(20),
               child: IconButton(
                 icon: const Icon(Icons.download),
@@ -500,11 +624,11 @@ class ChatBubble extends StatelessWidget {
     final l10n = McpPlaygroundLocalizations.of(context);
 
     final embeddedImages = _extractBase64Images(text);
-    
+
     // Check if the text is JSON containing an embedded file
     Map<String, String>? embeddedFile;
     String strippedText = text;
-    
+
     try {
       final decoded = jsonDecode(text.trim());
       if (decoded is Map) {
@@ -513,22 +637,38 @@ class ChatBubble extends StatelessWidget {
         String? mimeType;
 
         // Try extracting from root level
-        final rootContent = decoded['content'] ?? decoded['data'] ?? decoded['bytes'] ?? decoded['base64'] ?? decoded['fileContent'];
+        final rootContent =
+            decoded['content'] ??
+            decoded['data'] ??
+            decoded['bytes'] ??
+            decoded['base64'] ??
+            decoded['fileContent'];
         if (rootContent is String) {
           content = rootContent;
         }
-        fileName = decoded['fileName']?.toString() ?? decoded['filename']?.toString();
-        mimeType = decoded['mimeType']?.toString() ?? decoded['mimetype']?.toString();
+        fileName =
+            decoded['fileName']?.toString() ?? decoded['filename']?.toString();
+        mimeType =
+            decoded['mimeType']?.toString() ?? decoded['mimetype']?.toString();
 
         // If not found, try extracting from nested 'data' or other map values
         final dataVal = decoded['data'];
         if (dataVal is Map) {
-          final nestedContent = dataVal['content'] ?? dataVal['bytes'] ?? dataVal['base64'] ?? dataVal['fileContent'] ?? dataVal['data'];
+          final nestedContent =
+              dataVal['content'] ??
+              dataVal['bytes'] ??
+              dataVal['base64'] ??
+              dataVal['fileContent'] ??
+              dataVal['data'];
           if (nestedContent is String) {
             content = nestedContent;
           }
-          fileName ??= dataVal['fileName']?.toString() ?? dataVal['filename']?.toString();
-          mimeType ??= dataVal['mimeType']?.toString() ?? dataVal['mimetype']?.toString();
+          fileName ??=
+              dataVal['fileName']?.toString() ??
+              dataVal['filename']?.toString();
+          mimeType ??=
+              dataVal['mimeType']?.toString() ??
+              dataVal['mimetype']?.toString();
         }
 
         // Search recursively/flatly if still missing
@@ -536,11 +676,21 @@ class ChatBubble extends StatelessWidget {
           for (final entry in decoded.entries) {
             final val = entry.value;
             if (val is Map) {
-              final possibleContent = val['content'] ?? val['bytes'] ?? val['base64'] ?? val['fileContent'] ?? val['data'];
-              if (possibleContent is String && _looksLikeBase64String(possibleContent.trim().replaceAll(RegExp(r'\s+'), ''))) {
+              final possibleContent =
+                  val['content'] ??
+                  val['bytes'] ??
+                  val['base64'] ??
+                  val['fileContent'] ??
+                  val['data'];
+              if (possibleContent is String &&
+                  _looksLikeBase64String(
+                    possibleContent.trim().replaceAll(RegExp(r'\s+'), ''),
+                  )) {
                 content = possibleContent;
-                fileName ??= val['fileName']?.toString() ?? val['filename']?.toString();
-                mimeType ??= val['mimeType']?.toString() ?? val['mimetype']?.toString();
+                fileName ??=
+                    val['fileName']?.toString() ?? val['filename']?.toString();
+                mimeType ??=
+                    val['mimeType']?.toString() ?? val['mimetype']?.toString();
               }
             }
           }
@@ -573,16 +723,23 @@ class ChatBubble extends StatelessWidget {
     if (strippedText.isEmpty) {
       final widgets = <Widget>[];
       if (embeddedImages.isNotEmpty) {
-        widgets.addAll(embeddedImages.map((imgData) => _buildImageContent(context, imgData, 'image/png', theme)));
+        widgets.addAll(
+          embeddedImages.map(
+            (imgData) =>
+                _buildImageContent(context, imgData, 'image/png', theme),
+          ),
+        );
       }
       if (embeddedFile != null) {
-        widgets.add(_buildEmbeddedFile(
-          context,
-          embeddedFile['content']!,
-          embeddedFile['mimeType']!,
-          embeddedFile['fileName']!,
-          theme,
-        ));
+        widgets.add(
+          _buildEmbeddedFile(
+            context,
+            embeddedFile['content']!,
+            embeddedFile['mimeType']!,
+            embeddedFile['fileName']!,
+            theme,
+          ),
+        );
       }
       if (widgets.isNotEmpty) {
         return Column(
@@ -612,7 +769,10 @@ class ChatBubble extends StatelessWidget {
     final outputLines = processedText.split('\n');
     const maxPreviewLines = 15;
     const maxPreviewChars = 2000;
-    final shouldTruncate = isHtml || outputLines.length > maxPreviewLines || processedText.length > maxPreviewChars;
+    final shouldTruncate =
+        isHtml ||
+        outputLines.length > maxPreviewLines ||
+        processedText.length > maxPreviewChars;
 
     var previewText = processedText;
     if (shouldTruncate) {
@@ -631,7 +791,9 @@ class ChatBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.15),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -641,18 +803,34 @@ class ChatBubble extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
-                  Icon(Icons.html_outlined, size: 18, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.html_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     l10n.get('htmlDocumentPreview'),
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: Icon(Icons.zoom_in, size: 18, color: theme.colorScheme.primary),
-                    onPressed: () => _showHtmlFullScreen(context, processedText),
+                    icon: Icon(
+                      Icons.zoom_in,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    onPressed: () =>
+                        _showHtmlFullScreen(context, processedText),
                     tooltip: l10n.get('tapMagnifierTooltip'),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                     padding: EdgeInsets.zero,
                   ),
                 ],
@@ -667,14 +845,26 @@ class ChatBubble extends StatelessWidget {
                   const SizedBox(width: 4),
                   const Text(
                     'JSON Format',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF00ACC1)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00ACC1),
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.search, size: 18, color: Color(0xFF00ACC1)),
-                    onPressed: () => _showFullScreenOutput(context, processedText),
+                    icon: const Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Color(0xFF00ACC1),
+                    ),
+                    onPressed: () =>
+                        _showFullScreenOutput(context, processedText),
                     tooltip: 'View full screen',
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                     padding: EdgeInsets.zero,
                   ),
                 ],
@@ -687,14 +877,26 @@ class ChatBubble extends StatelessWidget {
                 children: [
                   Text(
                     'Preview (${outputLines.length} lines)',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: Icon(Icons.search, size: 18, color: theme.colorScheme.primary),
-                    onPressed: () => _showFullScreenOutput(context, processedText),
+                    icon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    onPressed: () =>
+                        _showFullScreenOutput(context, processedText),
                     tooltip: 'View full screen',
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
                     padding: EdgeInsets.zero,
                   ),
                 ],
@@ -758,7 +960,9 @@ class ChatBubble extends StatelessWidget {
     result = result.replaceAll(regex, '');
 
     // Also strip data:image/... URI pattern if it's there
-    final dataUriRegex = RegExp(r'data:image/[^;]+;base64,[a-zA-Z0-9+/=\s\r\n]+');
+    final dataUriRegex = RegExp(
+      r'data:image/[^;]+;base64,[a-zA-Z0-9+/=\s\r\n]+',
+    );
     result = result.replaceAll(dataUriRegex, '');
 
     // Clean up empty JSON markdown code blocks
@@ -841,7 +1045,10 @@ class ChatBubble extends StatelessWidget {
     if (hasHtmlOpen && hasHtmlClose) {
       return true;
     }
-    if (hasHtmlOpen && (lower.contains('<head') || lower.contains('<body') || lower.contains('<style'))) {
+    if (hasHtmlOpen &&
+        (lower.contains('<head') ||
+            lower.contains('<body') ||
+            lower.contains('<style'))) {
       return true;
     }
     return false;
@@ -849,7 +1056,10 @@ class ChatBubble extends StatelessWidget {
 
   String _extractHtmlCode(String text) {
     // 1. Check inside ```html ... ``` block
-    final codeBlockRegex = RegExp(r'```(?:html|xml)?([\s\S]*?)```', caseSensitive: false);
+    final codeBlockRegex = RegExp(
+      r'```(?:html|xml)?([\s\S]*?)```',
+      caseSensitive: false,
+    );
     final match = codeBlockRegex.firstMatch(text);
     if (match != null) {
       final code = match.group(1)?.trim();
@@ -876,16 +1086,16 @@ class ChatBubble extends StatelessWidget {
     final l10n = McpPlaygroundLocalizations.of(context);
     showDialog(
       context: context,
-      builder: (context) => DefaultTabController(
+      builder: (ctx) => DefaultTabController(
         length: 2,
         child: Dialog.fullscreen(
           child: Scaffold(
             appBar: AppBar(
               title: Text(l10n.get('htmlPreview')),
-              bottom: TabBar(
+              bottom: const TabBar(
                 tabs: [
-                  Tab(icon: const Icon(Icons.preview), text: l10n.get('renderedView')),
-                  Tab(icon: const Icon(Icons.code), text: l10n.get('htmlSource')),
+                  Tab(icon: Icon(Icons.preview), text: 'Rendered'),
+                  Tab(icon: Icon(Icons.code), text: 'Source'),
                 ],
               ),
               actions: [
@@ -894,36 +1104,75 @@ class ChatBubble extends StatelessWidget {
                   tooltip: l10n.get('copyHtmlSource'),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: html));
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(content: Text(l10n.get('htmlSourceCopied'))),
                     );
                   },
                 ),
                 IconButton(
+                  icon: const Icon(Icons.open_in_browser),
+                  tooltip: 'Open in Browser',
+                  onPressed: () => _openHtmlInBrowser(ctx, html),
+                ),
+                IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => Navigator.of(ctx).pop(),
                 ),
               ],
             ),
-            body: TabBarView(
+            body: Column(
               children: [
-                // Rendered View
-                SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: HtmlWidget(
-                    html,
-                    textStyle: Theme.of(context).textTheme.bodyMedium,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  color: Colors.orange.shade100,
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber,
+                        size: 16,
+                        color: Colors.orange.shade800,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'JavaScript is not active in preview. For interactive charts, use "Open in Browser".',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE65100),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                // HTML Source
-                Container(
-                  color: Theme.of(context).colorScheme.surfaceContainerLowest,
-                  padding: const EdgeInsets.all(12),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      html,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                    ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: HtmlWidget(
+                          html,
+                          textStyle: Theme.of(ctx).textTheme.bodyMedium,
+                        ),
+                      ),
+                      Container(
+                        color: Theme.of(ctx).colorScheme.surfaceContainerLowest,
+                        padding: const EdgeInsets.all(12),
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            html,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -934,13 +1183,44 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
+  Future<void> _openHtmlInBrowser(BuildContext context, String html) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = io.File(
+        '${dir.path}${io.Platform.pathSeparator}mcp_preview_${DateTime.now().millisecondsSinceEpoch}.html',
+      );
+      await file.writeAsString(html);
+      final uri = Uri.file(file.path);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not open browser. File saved to temp directory.',
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to open browser: $e')));
+      }
+    }
+  }
+
   List<String> _extractBase64Images(String text) {
     final images = <String>[];
     final trimmed = text.trim();
 
     // 1. Check if the raw text is a base64 image directly
     final cleanRaw = trimmed.replaceAll(RegExp(r'\s+'), '');
-    if (cleanRaw.startsWith('iVBORw0KGgo') || cleanRaw.startsWith('data:image/')) {
+    if (cleanRaw.startsWith('iVBORw0KGgo') ||
+        cleanRaw.startsWith('data:image/')) {
       images.add(cleanRaw);
       return images;
     }
@@ -992,7 +1272,11 @@ class ChatBubble extends StatelessWidget {
     caseSensitive: false,
   );
 
-  Widget _buildMarkdownWithEmbeddedDataUris(BuildContext context, String content, ThemeData theme) {
+  Widget _buildMarkdownWithEmbeddedDataUris(
+    BuildContext context,
+    String content,
+    ThemeData theme,
+  ) {
     final match = _markdownDataUriPattern.firstMatch(content);
     if (match == null) {
       return MarkdownBody(
@@ -1017,7 +1301,13 @@ class ChatBubble extends StatelessWidget {
     if (mimeType.toLowerCase().startsWith('image/')) {
       embeddedWidget = _buildEmbeddedImage(context, payload, mimeType, theme);
     } else {
-      embeddedWidget = _buildEmbeddedFile(context, payload, mimeType, fileName, theme);
+      embeddedWidget = _buildEmbeddedFile(
+        context,
+        payload,
+        mimeType,
+        fileName,
+        theme,
+      );
     }
 
     return Column(
@@ -1039,31 +1329,50 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildEmbeddedImage(BuildContext context, String base64Data, String mimeType, ThemeData theme) {
+  Widget _buildEmbeddedImage(
+    BuildContext context,
+    String base64Data,
+    String mimeType,
+    ThemeData theme,
+  ) {
     return _buildImageContent(context, base64Data, mimeType, theme);
   }
 
-  Widget _buildEmbeddedFile(BuildContext context, String base64Data, String mimeType, String fileName, ThemeData theme) {
+  Widget _buildEmbeddedFile(
+    BuildContext context,
+    String base64Data,
+    String mimeType,
+    String fileName,
+    ThemeData theme,
+  ) {
     Uint8List bytes;
     try {
       bytes = base64Decode(base64Data);
     } catch (e) {
       return Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text('Error decoding file: $e', style: const TextStyle(color: Colors.red)),
+        child: Text(
+          'Error decoding file: $e',
+          style: const TextStyle(color: Colors.red),
+        ),
       );
     }
     final sizeInKb = (bytes.length / 1024).toStringAsFixed(1);
 
     IconData fileIcon = Icons.insert_drive_file_outlined;
     Color fileColor = theme.colorScheme.primary;
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    if (mimeType.contains('spreadsheet') ||
+        mimeType.contains('excel') ||
+        fileName.endsWith('.xlsx') ||
+        fileName.endsWith('.xls')) {
       fileIcon = Icons.table_chart_outlined;
       fileColor = Colors.green;
     } else if (mimeType.contains('pdf') || fileName.endsWith('.pdf')) {
       fileIcon = Icons.picture_as_pdf_outlined;
       fileColor = Colors.red;
-    } else if (mimeType.contains('word') || mimeType.contains('document') || fileName.endsWith('.docx')) {
+    } else if (mimeType.contains('word') ||
+        mimeType.contains('document') ||
+        fileName.endsWith('.docx')) {
       fileIcon = Icons.description_outlined;
       fileColor = Colors.blue;
     }
@@ -1073,7 +1382,9 @@ class ChatBubble extends StatelessWidget {
       color: theme.colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.15)),
+        side: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.15),
+        ),
       ),
       child: ListTile(
         leading: CircleAvatar(
@@ -1086,7 +1397,10 @@ class ChatBubble extends StatelessWidget {
         ),
         subtitle: Text(
           '$sizeInKb KB · $mimeType',
-          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+          style: TextStyle(
+            fontSize: 11,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         trailing: IconButton(
           icon: const Icon(Icons.download_outlined),
@@ -1134,8 +1448,12 @@ class _TypingIndicatorState extends State<_TypingIndicator>
           builder: (context, child) {
             final delay = index * 0.2;
             final progress = (_animCtrl.value - delay).clamp(0.0, 1.0);
-            final scale = 1.0 + (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.4;
-            final opacity = 0.3 + (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.7;
+            final scale =
+                1.0 +
+                (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.4;
+            final opacity =
+                0.3 +
+                (progress < 0.5 ? progress * 2 : (1.0 - progress) * 2) * 0.7;
 
             return Opacity(
               opacity: opacity.clamp(0.3, 1.0),

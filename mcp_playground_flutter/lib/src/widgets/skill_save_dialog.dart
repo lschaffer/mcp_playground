@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:mcp_playground_dart/mcp_playground_dart.dart';
 import '../../playground_controller.dart';
 import '../skills/skill_zip_exporter.dart';
@@ -138,6 +140,12 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
           isMultiTurn: promptSteps.length > 1,
         ),
         isMultiTurn: promptSteps.length > 1,
+      );
+
+      final exporter = SkillExporter();
+      final md = exporter.toSkillMd(manifest);
+      debugPrint(
+        '[SaveSkill] SKILL.md preview (first 500 chars):\n${md.substring(0, md.length < 500 ? md.length : 500)}',
       );
 
       final zipBytes = await zipExporter.exportToZip(manifest: manifest);
@@ -346,10 +354,7 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
         manifest,
         availableToolNames: allToolNames,
       );
-      final missingTools = skillImporter.getUnresolvableTools(
-        manifest,
-        allToolNames,
-      );
+      skillImporter.getUnresolvableTools(manifest, allToolNames);
 
       if (!mounted) return;
 
@@ -359,17 +364,6 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
       if (!mounted) return;
 
       Navigator.of(context).pop(setup);
-
-      if (missingTools.isNotEmpty) {
-        _showMissingToolsWarning(missingTools, setup.name);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Loaded skill "${info.name}".'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -380,55 +374,57 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
     }
   }
 
-  void _showMissingToolsWarning(List<String> missingTools, String skillName) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Tools Not Available')),
-          ],
-        ),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Skill "$skillName" loaded, but ${missingTools.length} tool(s) not available:',
-              ),
-              const SizedBox(height: 12),
-              ...missingTools.map(
-                (t) => ListTile(
-                  dense: true,
-                  leading: Icon(
-                    Icons.block,
-                    size: 16,
-                    color: Colors.red.shade400,
-                  ),
-                  title: Text(
-                    t,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+  Future<void> _importFromFile() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['zip', 'md'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+
+      SkillManifest manifest;
+      if (file.extension?.toLowerCase() == 'md') {
+        // Direct SKILL.md file
+        final content = utf8.decode(bytes);
+        manifest = SkillImporter().parseSkillMd(content);
+      } else {
+        // ZIP file
+        final importer = SkillZipImporter();
+        final zipResult = importer.importFromZip(bytes);
+        manifest = zipResult.manifest;
+      }
+
+      final skillImporter = SkillImporter();
+      final allToolNames = {
+        for (final t in widget.controller.localTools) t.name,
+        for (final t in widget.controller.externalTools) t.name,
+      };
+      final setup = skillImporter.toSetup(
+        manifest,
+        availableToolNames: allToolNames,
+      );
+      skillImporter.getUnresolvableTools(manifest, allToolNames);
+
+      if (!mounted) return;
+      await widget.controller.saveSetup(setup);
+      if (!mounted) return;
+
+      Navigator.of(context).pop(setup);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: Colors.red,
           ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
@@ -438,75 +434,89 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
       content: SizedBox(
         width: 420,
         height: 400,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _errorMessage != null && _skills.isEmpty
-            ? Center(
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Colors.red.shade700),
-                ),
-              )
-            : _skills.isEmpty
-            ? const Center(
-                child: Text(
-                  'No saved skills found.\n\nUse "Save Skill" to create one.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              )
-            : ListView.builder(
-                itemCount: _skills.length,
-                itemBuilder: (ctx, idx) {
-                  final skill = _skills[idx];
-                  return ListTile(
-                    title: Text(
-                      skill.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (skill.description != null &&
-                            skill.description!.isNotEmpty)
-                          Text(
-                            skill.description!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        Text(
-                          skill.zipFileName,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                        size: 20,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.file_open, size: 18),
+                label: const Text('Import Skill from File'),
+                onPressed: _importFromFile,
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorMessage != null && _skills.isEmpty
+                  ? Center(
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red.shade700),
                       ),
-                      onPressed: () async {
-                        await widget.controller.skillStorage.deleteSkill(
-                          skill.name,
+                    )
+                  : _skills.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No saved skills found.\n\nUse "Save Skill" to create one.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _skills.length,
+                      itemBuilder: (ctx, idx) {
+                        final skill = _skills[idx];
+                        return ListTile(
+                          title: Text(
+                            skill.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (skill.description != null &&
+                                  skill.description!.isNotEmpty)
+                                Text(
+                                  skill.description!,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              Text(
+                                skill.zipFileName,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 20,
+                            ),
+                            onPressed: () async {
+                              await widget.controller.skillStorage.deleteSkill(
+                                skill.name,
+                              );
+                              _loadSkills();
+                            },
+                          ),
+                          onTap: () => _loadSkill(skill),
                         );
-                        _loadSkills();
                       },
                     ),
-                    onTap: () => _loadSkill(skill),
-                  );
-                },
-              ),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
         ),
       ],

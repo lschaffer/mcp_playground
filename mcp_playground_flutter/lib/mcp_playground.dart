@@ -830,6 +830,21 @@ class _McpPlaygroundState extends State<McpPlayground> {
 
       _controller.updateEnabledTools(result.enabledToolNames.toSet());
     });
+
+    debugPrint('[LoadSkill] systemPrompt: ${result.systemPrompt.length} chars');
+    debugPrint(
+      '[LoadSkill] initialPrompt: ${result.initialPrompt.length} chars',
+    );
+    debugPrint('[LoadSkill] tools: ${result.enabledToolNames.length}');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Loaded skill "${result.name}".'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   void _applyLlmDefaults() {

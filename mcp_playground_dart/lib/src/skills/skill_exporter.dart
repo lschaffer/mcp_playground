@@ -1,4 +1,3 @@
-import 'dart:convert';
 import '../models/models.dart';
 import '../models/skill_manifest.dart';
 import '../mcp/local_tools.dart';
@@ -104,110 +103,93 @@ class SkillExporter {
     );
   }
 
-  /// Generates a SKILL.md content string from a [SkillManifest].
+  /// Generates a SKILL.md content string from a [SkillManifest]
+  /// in agentskills.io (TealKit) compatible format.
   String toSkillMd(SkillManifest manifest) {
     final sb = StringBuffer();
 
-    // YAML frontmatter
+    final promptText = serializeSubPromptSteps(
+      manifest.promptSteps
+          .map(
+            (s) => SubPromptStep(
+              text: s.text,
+              enabledToolNames: s.enabledToolNames,
+              stopAfterToolCall: s.stopAfterToolCall,
+            ),
+          )
+          .toList(),
+    );
+
+    // Collect capability names from tools
+    final capabilities = manifest.tools
+        .where((t) => t.capability != null)
+        .map((t) => t.capability!)
+        .toList();
+
     sb.writeln('---');
-    sb.writeln('name: ${manifest.name}');
+    sb.writeln('name: ${_yamlString(manifest.name)}');
     sb.writeln('description: ${_yamlString(manifest.description)}');
-    sb.writeln('version: ${manifest.version}');
-    if (manifest.author != null && manifest.author!.isNotEmpty) {
-      sb.writeln('author: ${manifest.author}');
-    }
+    sb.writeln('compatibility: mcp_playground');
 
-    // System prompt
-    if (manifest.systemPrompt.trim().isNotEmpty) {
-      sb.writeln('system_prompt: |');
-      for (final line in manifest.systemPrompt.split('\n')) {
-        sb.writeln('  $line');
+    // Metadata block
+    sb.writeln('metadata:');
+    sb.writeln('  original_name: ${_yamlString(manifest.name)}');
+    sb.writeln('  author: ${manifest.author ?? "mcp_playground"}');
+
+    if (capabilities.isNotEmpty) {
+      sb.writeln('  required_capabilities:');
+      for (final cap in capabilities) {
+        sb.writeln('    - ${_yamlString(cap)}');
       }
     }
 
-    // Prompt steps
-    if (manifest.promptSteps.isNotEmpty) {
-      sb.writeln('prompts:');
-      for (final step in manifest.promptSteps) {
-        sb.writeln('  - text: ${_yamlString(step.text)}');
-        if (step.enabledToolNames != null) {
-          sb.writeln('    tools: [${step.enabledToolNames!.join(', ')}]');
-        }
-        if (step.stopAfterToolCall) {
-          sb.writeln('    stop_after_tool_call: true');
-        }
-      }
+    // LLM settings
+    if (manifest.mcpPlaygroundMeta?.customLlmConfig != null) {
+      final llm = manifest.mcpPlaygroundMeta!.customLlmConfig!;
+      sb.writeln('  llm_settings:');
+      sb.writeln('    provider: ${llm['provider'] ?? 'none'}');
+      sb.writeln('    model: ${_yamlString(llm['model']?.toString() ?? '')}');
+      sb.writeln('    temperature: ${llm['temperature'] ?? 0.2}');
+      sb.writeln('    max_tokens: ${llm['maxTokens'] ?? 0}');
     }
 
-    // Tools
-    if (manifest.tools.isNotEmpty) {
-      sb.writeln('tools:');
-      for (final tool in manifest.tools) {
-        sb.writeln('  - name: ${tool.name}');
-        if (tool.description != null && tool.description!.isNotEmpty) {
-          sb.writeln('    description: ${_yamlString(tool.description!)}');
-        }
-        if (tool.inputSchema != null) {
-          sb.writeln('    input_schema:');
-          final schemaLines = const JsonEncoder.withIndent(
-            '      ',
-          ).convert(tool.inputSchema!);
-          // Indent the schema under input_schema:
-          for (final line in schemaLines.split('\n')) {
-            sb.writeln('    $line');
-          }
-        }
-        sb.writeln('    tier: ${tool.tier}');
-        if (tool.runtime != null) {
-          sb.writeln('    runtime: ${tool.runtime}');
-        }
-        if (tool.installCmd != null) {
-          sb.writeln('    install: ${tool.installCmd}');
-        }
-        if (tool.registryUrl != null) {
-          sb.writeln('    registry: ${tool.registryUrl}');
-        }
-        if (tool.capability != null) {
-          sb.writeln('    capability: ${tool.capability}');
-        }
-      }
-    }
-
-    // mcp_playground metadata
+    // Workflow
+    sb.writeln('  workflow:');
+    sb.writeln('    prompt: ${_yamlString(promptText)}');
     if (manifest.mcpPlaygroundMeta != null) {
-      final meta = manifest.mcpPlaygroundMeta!;
-      sb.writeln('mcp_playground:');
-      sb.writeln('  chat_mode: ${meta.chatMode}');
-      sb.writeln('  stop_after_tool_call: ${meta.stopAfterToolCall}');
-      sb.writeln('  use_custom_llm: ${meta.useCustomLlm}');
-      if (meta.customLlmConfig != null) {
-        sb.writeln('  custom_llm_config:');
-        final cfgLines = const JsonEncoder.withIndent(
-          '    ',
-        ).convert(meta.customLlmConfig!);
-        for (final line in cfgLines.split('\n')) {
-          sb.writeln('  $line');
-        }
-      }
-      if (meta.mcpInitParams != null) {
-        sb.writeln('  mcp_init_params:');
-        final paramLines = const JsonEncoder.withIndent(
-          '    ',
-        ).convert(meta.mcpInitParams!);
-        for (final line in paramLines.split('\n')) {
-          sb.writeln('  $line');
-        }
-      }
+      sb.writeln('    chat_mode: ${manifest.mcpPlaygroundMeta!.chatMode}');
       sb.writeln(
-        '  created_at: ${_yamlString(meta.createdAt.toIso8601String())}',
+        '    stop_after_tool_call: ${manifest.mcpPlaygroundMeta!.stopAfterToolCall}',
       );
-      sb.writeln('  is_multi_turn: ${meta.isMultiTurn}');
     }
+
+    // Agent
+    sb.writeln('    agents:');
+    sb.writeln('      - id: "${manifest.name}"');
+    sb.writeln('        name: ${_yamlString(manifest.name)}');
+    if (manifest.systemPrompt.isNotEmpty) {
+      sb.writeln(
+        '        system_prompt: ${_yamlString(manifest.systemPrompt)}',
+      );
+    }
+    sb.writeln('        prompt: ${_yamlString(promptText)}');
+    sb.writeln(
+      '        chat_mode: ${manifest.mcpPlaygroundMeta?.chatMode ?? false}',
+    );
+    sb.writeln(
+      '        stop_after_tool_call: ${manifest.mcpPlaygroundMeta?.stopAfterToolCall ?? false}',
+    );
+    if (capabilities.isNotEmpty) {
+      sb.writeln('        internal_mcps:');
+      for (final cap in capabilities) {
+        sb.writeln('          - ${_yamlString(cap)}');
+      }
+    }
+    sb.writeln('    edges:');
 
     sb.writeln('---');
     sb.writeln();
 
-    // Body markdown
     if (manifest.bodyMarkdown != null && manifest.bodyMarkdown!.isNotEmpty) {
       sb.writeln(manifest.bodyMarkdown);
     } else {
