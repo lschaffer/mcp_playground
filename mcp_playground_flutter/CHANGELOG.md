@@ -1,3 +1,14 @@
+## 0.2.0
+
+- **Breaking**: Replaced JSON export/import with agentskills.io-compatible SKILL.md ZIP skill system. Old `SavedPlaygroundSetup` JSON format is fully removed.
+- **Save as Skill**: New save dialog captures multi-turn conversation history, flattens subprompts, includes unsent input, and saves as agentskills.io-compatible SKILL.md ZIP.
+- **Load Skill**: New load dialog browses stored skills via `SkillStorageAdapter` with name/description/delete support, plus "Import from File" button for `.zip`/`.md` files.
+- **SkillStorageAdapter**: Abstract adapter interface with two default implementations — `FileSystemSkillStorageAdapter` (desktop/mobile) using `skills-defs.json`, and `WebSkillStorageAdapter` (web) using localStorage. Users can inject custom adapters.
+- **Toolbar cleanup**: Removed obsolete save/load setup buttons. "Save Skill" (floppy icon) and "Load Skill" now always visible in both setup and playground screens.
+- **HTML preview**: Added "JavaScript not active" warning and "Open in Browser" button to HTML document preview dialog (saves to temp file, opens via `url_launcher`).
+- **Config priority**: `.env` initial LLM config now takes priority over stale SharedPreferences data.
+- **Dependencies**: Added `archive` for ZIP creation/extraction. Upgraded `mcp_playground_dart` to `^0.2.0`.
+
 ## 0.1.6
 
 * Upgraded `mcp_playground_dart` core dependency to `0.1.4`.

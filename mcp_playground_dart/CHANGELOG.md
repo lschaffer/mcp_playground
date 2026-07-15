@@ -1,3 +1,12 @@
+## 0.2.0
+
+- **BREAKING**: SKILL.md export/import format changed to agentskills.io TealKit-compatible standard (`compatibility:`, `metadata:`, `workflow:`, `agents:`). Legacy custom format (`system_prompt:`, `prompts:`, `tools:`) is deprecated.
+- Added `SkillManifest`, `SkillPromptStep`, `SkillToolDeclaration` models with 3-tier portability (`capability`, `local`, `external`).
+- Added `SkillExporter` — converts `SavedPlaygroundSetup`/conversation → SKILL.md YAML frontmatter.
+- Added `SkillImporter` — parses SKILL.md (both TealKit and legacy formats) → `SavedPlaygroundSetup` with multi-prompt step conversion.
+- Added `SkillStorageAdapter` abstract interface with `StoredSkillInfo` for pluggable skill ZIP persistence.
+- Added `yaml` dependency for robust YAML parsing.
+
 ## 0.1.4
 
 - Upgraded dependencies: `anthropic_sdk_dart` to `^6.0.0`, `googleai_dart` to `^9.0.0`, `ollama_dart` to `^2.4.0`, `http` to `^1.6.0`.
