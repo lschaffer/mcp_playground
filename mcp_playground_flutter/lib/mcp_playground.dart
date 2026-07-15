@@ -790,11 +790,46 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
   }
 
-  void _showLoadSkillDialog() {
-    showDialog(
+  Future<void> _showLoadSkillDialog() async {
+    final result = await showDialog<SavedPlaygroundSetup>(
       context: context,
       builder: (ctx) => SkillLoadDialog(controller: _controller),
     );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _loadedSetupId = result.id;
+      _systemPromptCtrl.text = result.systemPrompt;
+      _initialPromptCtrl.text = result.initialPrompt;
+      _chatMode = result.chatMode;
+      _stopAfterToolCall = result.stopAfterToolCall;
+      _useCustomLlm = result.useCustomLlm;
+
+      if (result.customLlmConfig != null) {
+        final custom = result.customLlmConfig!;
+        _customProvider = custom.provider;
+        _customModelCtrl.text = custom.model;
+        _customApiKeyCtrl.text = custom.apiKey;
+        _customBaseUrlCtrl.text = custom.baseUrl;
+        _customTempCtrl.text = custom.temperature.toString();
+        _customMaxTokensCtrl.text = custom.maxTokens.toString();
+        _customMaxToolOutputSizeCtrl.text = custom.maxToolOutputSize.toString();
+        _customTokenWarningThresholdCtrl.text = custom.tokenWarningThreshold
+            .toString();
+        _customTopKCtrl.text = custom.topK?.toString() ?? '';
+        _customTopPCtrl.text = custom.topP?.toString() ?? '';
+        _customRepeatPenaltyCtrl.text = custom.repeatPenalty?.toString() ?? '';
+        _customSeedCtrl.text = custom.seed?.toString() ?? '';
+        _customThinking = custom.thinking;
+        _customIsSlm = custom.isSlm;
+        _customIsMultiModal = custom.isMultiModal;
+        _customUseNativeTool = custom.useNativeToolCall;
+        _customUseStreaming = custom.useStreaming;
+      }
+
+      _controller.updateEnabledTools(result.enabledToolNames.toSet());
+    });
   }
 
   void _applyLlmDefaults() {
@@ -1962,6 +1997,11 @@ class _McpPlaygroundState extends State<McpPlayground> {
             onPressed: _showSaveSkillDialog,
           ),
         ],
+        IconButton(
+          icon: const Icon(Icons.save_outlined),
+          tooltip: 'Save Skill',
+          onPressed: _showSaveSkillDialog,
+        ),
         const VerticalDivider(width: 16, indent: 12, endIndent: 12),
         IconButton(
           icon: const Icon(Icons.list_alt),
@@ -2022,17 +2062,17 @@ class _McpPlaygroundState extends State<McpPlayground> {
                 ],
               ),
             ),
-            PopupMenuItem(
-              value: 'saveSkill',
-              child: Row(
-                children: [
-                  const Icon(Icons.save_outlined, size: 20),
-                  const SizedBox(width: 12),
-                  const Text('Save Skill'),
-                ],
-              ),
-            ),
           ],
+          PopupMenuItem(
+            value: 'saveSkill',
+            child: Row(
+              children: [
+                const Icon(Icons.save_outlined, size: 20),
+                const SizedBox(width: 12),
+                const Text('Save Skill'),
+              ],
+            ),
+          ),
           PopupMenuItem(
             value: 'catalog',
             child: Row(

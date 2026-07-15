@@ -30,7 +30,14 @@ class _SkillSaveDialogState extends State<SkillSaveDialog> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _nameCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
+    _nameCtrl.removeListener(() {});
     _nameCtrl.dispose();
     _descriptionCtrl.dispose();
     super.dispose();
@@ -351,7 +358,7 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
 
       if (!mounted) return;
 
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(setup);
 
       if (missingTools.isNotEmpty) {
         _showMissingToolsWarning(missingTools, setup.name);
