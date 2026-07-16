@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
+import '../models/skill_manifest.dart';
 import '../llm/llm_service.dart';
 import '../llm/llm_response.dart';
 import '../mcp/local_tools.dart';
@@ -48,6 +49,7 @@ class AgentAssistantResultEvent extends AgentEvent {
 
   /// The response from the LLM.
   final String response;
+
   /// Creates a new [AgentAssistantResultEvent].
   AgentAssistantResultEvent({required this.prompt, required this.response});
 }
@@ -55,6 +57,7 @@ class AgentAssistantResultEvent extends AgentEvent {
 /// Error event.
 class AgentErrorEvent extends AgentEvent {
   final Object error;
+
   /// Creates a new [AgentErrorEvent] wrapping [error].
   AgentErrorEvent(this.error);
 }
@@ -215,6 +218,102 @@ class McpAgentEngine {
     );
   }
 
+  /// Builds and registers an [Agent] from a parsed [SkillManifest].
+  ///
+  /// Tool declarations with `tier: local` are converted to [McpServerConfig]
+  /// instances using [workingDir] as the allowed filesystem path.
+  /// Tool declarations with `tier: external` use [registryUrl].
+  /// Capability-tier tools are resolved via [serverOverrides] or [dartTools].
+  ///
+  /// Call [run] or [runAsync] with [SkillManifest.name] as the agent key
+  /// after registration.
+  void registerAgentFromManifest(
+    SkillManifest manifest, {
+    required LlmConfig llmConfig,
+    String? workingDir,
+    Map<String, McpServerConfig>? serverOverrides,
+    List<McpLocalTool> dartTools = const [],
+  }) {
+    final localServers = <McpServerConfig>[];
+    final remoteServers = <McpServerConfig>[];
+
+    for (final tool in manifest.tools) {
+      // Skip if an explicit override exists for this tool name
+      if (serverOverrides != null && serverOverrides.containsKey(tool.name)) {
+        final override = serverOverrides[tool.name]!;
+        if (override.isLocal) {
+          localServers.add(override);
+        } else {
+          remoteServers.add(override);
+        }
+        continue;
+      }
+
+      switch (tool.tier) {
+        case 'local':
+          final install = _parseInstallCmd(tool.installCmd ?? '');
+          localServers.add(
+            McpServerConfig(
+              id: tool.name,
+              name: tool.description ?? tool.name,
+              url: workingDir ?? '',
+              isLocal: true,
+              localType: tool.runtime ?? 'nodejs',
+              localInstallMethod: install.method,
+              localPackage: install.package,
+              enabled: true,
+            ),
+          );
+        case 'external':
+          remoteServers.add(
+            McpServerConfig(
+              id: tool.name,
+              name: tool.description ?? tool.name,
+              url: tool.registryUrl ?? '',
+              enabled: true,
+            ),
+          );
+        case 'capability':
+          // Capability-tier tools are expected to be provided by the host
+          // via `dartTools` or `serverOverrides`. Skip here.
+          break;
+      }
+    }
+
+    final agent = Agent(
+      key: manifest.name,
+      name: manifest.name,
+      llmConfig: llmConfig,
+      systemPrompt: manifest.systemPrompt,
+      prompts: manifest.promptSteps
+          .map(
+            (s) => SubPromptStep(
+              text: s.text,
+              enabledToolNames: s.enabledToolNames,
+              stopAfterToolCall: s.stopAfterToolCall,
+            ),
+          )
+          .toList(),
+      dartTools: dartTools,
+      localServers: localServers,
+      remoteServers: remoteServers,
+    );
+
+    setAgents([agent]);
+  }
+
+  /// Parses an install command like "npx @modelcontextprotocol/server-filesystem"
+  /// into [method] and [package] parts.
+  static ({String method, String package}) _parseInstallCmd(String installCmd) {
+    final parts = installCmd.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      final method = parts[0];
+      final package = parts.sublist(1).join(' ');
+      return (method: method, package: package);
+    }
+    return (method: installCmd, package: '');
+  }
+
   /// Retrieve all currently registered agents.
   List<Agent> getAgents() => List.unmodifiable(_agents.values);
 
@@ -279,20 +378,22 @@ class McpAgentEngine {
     final runController = StreamController<AgentEvent>.broadcast();
     unawaited(
       _executeAgent(
-        agentKey,
-        onLog: onLog,
-        onToolResult: onToolResult,
-        onAssistantResult: onAssistantResult,
-        onError: onError,
-        onFinalResult: onFinalResult,
-        externalMcpManager: mcpManager,
-        runController: runController,
-      ).then((_) {
-        runController.close();
-      }).catchError((err) {
-        runController.addError(err);
-        runController.close();
-      }),
+            agentKey,
+            onLog: onLog,
+            onToolResult: onToolResult,
+            onAssistantResult: onAssistantResult,
+            onError: onError,
+            onFinalResult: onFinalResult,
+            externalMcpManager: mcpManager,
+            runController: runController,
+          )
+          .then((_) {
+            runController.close();
+          })
+          .catchError((err) {
+            runController.addError(err);
+            runController.close();
+          }),
     );
     return runController.stream;
   }
@@ -335,54 +436,18 @@ class McpAgentEngine {
       }
 
       if (externalMcpManager == null) {
-
-      // Connect remote servers
-      for (final server in agent.remoteServers) {
-        if (!server.enabled) continue;
-        final client = MCPClient(
-          server.url,
-          mcpEndpoint: server.mcpEndpoint,
-          bearerToken: server.apiKey,
-          apiPassword: server.apiPassword,
-          logCallback: (msg, {bool isError = false}) {
-            final logMsg = isError
-                ? '[MCP:${server.name}] ERROR: $msg'
-                : '[MCP:${server.name}] $msg';
-            _log(logMsg);
-          },
-        );
-        final clientDef = MCPClientDef(
-          name: server.id,
-          client: client,
-          displayName: server.name,
-        );
-        mcpManager.registerClient(clientDef);
-        try {
-          await client.connect();
-          _log('Connected to remote MCP server: ${server.name}');
-        } catch (e) {
-          _log('Failed to connect to remote MCP server ${server.name}: $e');
-          emit(
-            AgentLogEvent(
-              'Warning: Could not connect to MCP server "${server.name}": $e',
-            ),
-          );
-          onLog?.call(
-            'Warning: Could not connect to MCP server "${server.name}": $e',
-          );
-        }
-      }
-
-      // Connect local servers (desktop only via conditional import)
-      for (final server in agent.localServers) {
-        if (!server.enabled) continue;
-        try {
-          final client = LocalMCPClient(
-            server,
+        // Connect remote servers
+        for (final server in agent.remoteServers) {
+          if (!server.enabled) continue;
+          final client = MCPClient(
+            server.url,
+            mcpEndpoint: server.mcpEndpoint,
+            bearerToken: server.apiKey,
+            apiPassword: server.apiPassword,
             logCallback: (msg, {bool isError = false}) {
               final logMsg = isError
-                  ? '[LocalMCP:${server.name}] ERROR: $msg'
-                  : '[LocalMCP:${server.name}] $msg';
+                  ? '[MCP:${server.name}] ERROR: $msg'
+                  : '[MCP:${server.name}] $msg';
               _log(logMsg);
             },
           );
@@ -392,20 +457,55 @@ class McpAgentEngine {
             displayName: server.name,
           );
           mcpManager.registerClient(clientDef);
-          await client.connect();
-          _log('Connected to local MCP server: ${server.name}');
-        } catch (e) {
-          _log('Failed to connect to local MCP server ${server.name}: $e');
-          emit(
-            AgentLogEvent(
-              'Warning: Could not connect to local MCP server "${server.name}": $e',
-            ),
-          );
-          onLog?.call(
-            'Warning: Could not connect to local MCP server "${server.name}": $e',
-          );
+          try {
+            await client.connect();
+            _log('Connected to remote MCP server: ${server.name}');
+          } catch (e) {
+            _log('Failed to connect to remote MCP server ${server.name}: $e');
+            emit(
+              AgentLogEvent(
+                'Warning: Could not connect to MCP server "${server.name}": $e',
+              ),
+            );
+            onLog?.call(
+              'Warning: Could not connect to MCP server "${server.name}": $e',
+            );
+          }
         }
-      }
+
+        // Connect local servers (desktop only via conditional import)
+        for (final server in agent.localServers) {
+          if (!server.enabled) continue;
+          try {
+            final client = LocalMCPClient(
+              server,
+              logCallback: (msg, {bool isError = false}) {
+                final logMsg = isError
+                    ? '[LocalMCP:${server.name}] ERROR: $msg'
+                    : '[LocalMCP:${server.name}] $msg';
+                _log(logMsg);
+              },
+            );
+            final clientDef = MCPClientDef(
+              name: server.id,
+              client: client,
+              displayName: server.name,
+            );
+            mcpManager.registerClient(clientDef);
+            await client.connect();
+            _log('Connected to local MCP server: ${server.name}');
+          } catch (e) {
+            _log('Failed to connect to local MCP server ${server.name}: $e');
+            emit(
+              AgentLogEvent(
+                'Warning: Could not connect to local MCP server "${server.name}": $e',
+              ),
+            );
+            onLog?.call(
+              'Warning: Could not connect to local MCP server "${server.name}": $e',
+            );
+          }
+        }
       }
 
       // ── Build full tool list ────────────────────────────
@@ -522,9 +622,7 @@ class McpAgentEngine {
             timestamp: DateTime.now(),
           );
           messages.add(userMsg);
-          emit(
-            AgentLogEvent('User prompt [step ${stepIdx + 1}]: $prompt'),
-          );
+          emit(AgentLogEvent('User prompt [step ${stepIdx + 1}]: $prompt'));
           onLog?.call('User prompt [step ${stepIdx + 1}]: $prompt');
         }
 
@@ -603,7 +701,8 @@ class McpAgentEngine {
               }
             }
             if (_cancelTokens[agentKey] == true) break;
-            response = finalResponse ?? LLMResponse(text: textBuffer.toString());
+            response =
+                finalResponse ?? LLMResponse(text: textBuffer.toString());
           } else {
             response = await LLMService.generate(
               config: agent.llmConfig,
@@ -727,7 +826,8 @@ class McpAgentEngine {
             );
             messages.add(callMsg);
             stepNewMsgs.add(callMsg);
-            final logMessage = 'Calling tool: ${call.name} with args: ${jsonEncode(call.arguments)}';
+            final logMessage =
+                'Calling tool: ${call.name} with args: ${jsonEncode(call.arguments)}';
             emit(AgentLogEvent(logMessage));
             onLog?.call(logMessage);
 

@@ -29,7 +29,6 @@ Future<void> _downloadFile(String url, String savePath) async {
   }
 
   final file = File(savePath);
-  // Ensure the parent directory exists
   await file.parent.create(recursive: true);
 
   final sink = file.openWrite();
@@ -412,7 +411,6 @@ Future<void> main() async {
     }
   }
 
-  // Fallback to default user models directory
   if (modelDir.isEmpty) {
     modelDir = _getDefaultModelsDir();
   }
@@ -446,8 +444,7 @@ Future<void> main() async {
       fullModelPath,
       modelParams: ModelParams(
         contextSize: 4096,
-        gpuLayers: ModelParams
-            .maxGpuLayers, //0 Force CPU execution on Windows. Set to ModelParams.maxGpuLayers to use Metal GPU on macOS.
+        gpuLayers: ModelParams.maxGpuLayers,
       ),
     );
     print('Model successfully loaded!');
@@ -459,40 +456,46 @@ Future<void> main() async {
   // 4. Register llamadart delegates with LLMService
   _registerLlamaDelegates(engine);
 
-  // 5. Initialize McpAgentEngine and register Weather Tools
-  final defaultLlm = LlmConfig(
+  // 5. Load and parse skill.md
+  final skillFile = File('skill.md');
+  if (!await skillFile.exists()) {
+    print('ERROR: skill.md not found in current directory.');
+    print('Run this example from: examples/dart/embedded_example/');
+    exit(1);
+  }
+
+  final skillContent = await skillFile.readAsString();
+  final manifest = SkillImporter().parseSkillMd(skillContent);
+
+  print('Loaded skill: ${manifest.name} v${manifest.version}');
+  print(
+    '  Capabilities: ${manifest.tools.map((t) => t.capability ?? t.name).join(', ')}',
+  );
+
+  // 6. Build LLM config and weather tools
+  final llmConfig = LlmConfig(
     provider: LlmProvider.embedded,
     model: modelName,
     apiKey: '',
     useStreaming: true,
   );
 
-  final List<McpLocalTool> weatherTools = [
+  final weatherTools = <McpLocalTool>[
     GetCurrentWeatherTool(),
     GetHourlyForecastTool(),
     GetDailyForecastTool(),
     GeocodeWeatherCityTool(),
   ];
 
-  final agent = Agent(
-    key: 'embedded_weather_agent',
-    name: 'Embedded Weather Assistant',
-    llmConfig: defaultLlm,
-    systemPrompt:
-        'You are an AI assistant specialized in weather forecasts. Use the weather tools to answer user questions.',
-    prompts: [
-      const SubPromptStep(
-        text:
-            'show next 24 hours forecast from Rome,Italy, ist all 24 hours individually without summarizing',
-      ),
-    ],
+  // 7. Register agent from manifest (engine handles the rest)
+  final agentEngine = McpAgentEngine();
+  agentEngine.registerAgentFromManifest(
+    manifest,
+    llmConfig: llmConfig,
     dartTools: weatherTools,
   );
 
-  final agentEngine = McpAgentEngine();
-  agentEngine.setAgents([agent]);
-
-  // 6. Listen to Agent events to stream final text and tool calls to terminal
+  // 8. Listen to agent events
   final subscription = agentEngine.agentEvents.listen((event) {
     if (event is AgentLogEvent) {
       print('\n[LOG] ${event.message}');
@@ -504,7 +507,6 @@ Future<void> main() async {
     } else if (event is AgentTextChunkEvent) {
       stdout.write(event.chunk);
     } else if (event is AgentAssistantResultEvent) {
-      // Empty line for spacing
       print('');
     } else if (event is AgentFinalResultEvent) {
       print('\n=== Final Complete Response ===');
@@ -515,11 +517,11 @@ Future<void> main() async {
   });
 
   print(
-    '\nRunning Weather Forecast Agent with prompt: "show next 24 hours forecast from Rome,Italy"...\n',
+    '\nRunning Weather Forecast Agent from skill.md: "show next 24 hours forecast from Rome,Italy"...\n',
   );
 
   try {
-    final stream = agentEngine.runAsync(agent.key);
+    final stream = agentEngine.runAsync(manifest.name);
     await stream.firstWhere(
       (event) => event is AgentFinalResultEvent || event is AgentErrorEvent,
     );

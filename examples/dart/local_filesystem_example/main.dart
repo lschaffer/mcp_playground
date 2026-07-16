@@ -7,7 +7,6 @@ Future<void> _loadEnv() async {
   try {
     var dir = Directory.current;
     File? envFile;
-    // Walk up to find .env file
     for (int i = 0; i < 5; i++) {
       final file = File('${dir.path}/.env');
       if (await file.exists()) {
@@ -35,25 +34,41 @@ Future<void> _loadEnv() async {
 Future<void> main() async {
   await _loadEnv();
 
-  // 1. Prepare temp directory for the filesystem tool
-  final tempDir = Directory('C:\\temp');
+  // ── 1. Set up temp directory with dummy files ──────────────────
+  final workingDir = r'C:\temp';
+  final tempDir = Directory(workingDir);
   if (!await tempDir.exists()) {
     try {
       await tempDir.create(recursive: true);
-      // Create some dummy files to sort
-      await File('C:\\temp\\small.txt').writeAsString('Hello');
-      await File('C:\\temp\\medium.log').writeAsString('A' * 1024); // 1 KB
-      await File('C:\\temp\\large.bin').writeAsString('B' * 10240); // 10 KB
-      await File(
-        'C:\\temp\\exclude.hex',
-      ).writeAsString('C' * 50000); // Should be excluded
-      await File('C:\\temp\\huge.db').writeAsString('D' * 102400); // 100 KB
+      await File('$workingDir\\small.txt').writeAsString('Hello');
+      await File('$workingDir\\medium.log').writeAsString('A' * 1024);
+      await File('$workingDir\\large.bin').writeAsString('B' * 10240);
+      await File('$workingDir\\exclude.hex').writeAsString('C' * 50000);
+      await File('$workingDir\\huge.db').writeAsString('D' * 102400);
     } catch (e) {
-      print('Warning: Failed to setup dummy files in C:\\temp: $e');
+      print('Warning: Failed to setup dummy files in $workingDir: $e');
     }
   }
 
-  // 2. Load LLM credentials
+  // ── 2. Load and parse skill.md ─────────────────────────────────
+  final skillFile = File('skill.md');
+  if (!await skillFile.exists()) {
+    print('ERROR: skill.md not found in current directory.');
+    print('Run this example from: examples/dart/local_filesystem_example/');
+    exit(1);
+  }
+
+  final skillContent = await skillFile.readAsString();
+  final manifest = SkillImporter().parseSkillMd(skillContent);
+
+  print('Loaded skill: ${manifest.name} v${manifest.version}');
+  print('  Description: ${manifest.description}');
+  print(
+    '  Capabilities: ${manifest.tools.map((t) => t.capability ?? t.name).join(', ')}',
+  );
+  print('  Prompt steps: ${manifest.promptSteps.length}');
+
+  // ── 3. Build LLM config from environment ───────────────────────
   final providerStr = _env['LLM_PROVIDER']?.toLowerCase() ?? 'openai';
   var provider = LlmProvider.openai;
   if (providerStr == 'claude') provider = LlmProvider.claude;
@@ -80,50 +95,44 @@ Future<void> main() async {
     temperature: 0.2,
   );
 
-  // 3. Define the Local Filesystem MCP server setup
-  final filesystemServer = McpServerConfig(
-    id: 'filesystem',
-    name: 'Filesystem',
-    url: 'C:\\temp',
-    isLocal: true,
-    localType: 'nodejs',
-    localInstallMethod: 'npx',
-    localPackage: '@modelcontextprotocol/server-filesystem',
-    enabled: true,
-  );
+  // ── 4. Map skill capabilities to runtime server configs ────────
+  // The skill declares "filesystem" as a required capability.
+  // The host provides the actual MCP server implementation.
+  final serverOverrides = <String, McpServerConfig>{
+    'filesystem': McpServerConfig(
+      id: 'filesystem',
+      name: 'Filesystem',
+      url: workingDir,
+      isLocal: true,
+      localType: 'nodejs',
+      localInstallMethod: 'npx',
+      localPackage: '@modelcontextprotocol/server-filesystem',
+      enabled: true,
+    ),
+  };
 
-  // 4. Create the Agent configuration
-  final agent = Agent(
-    key: 'filesystem_agent',
-    name: 'Filesystem Inspector',
-    llmConfig: llmConfig,
-    systemPrompt:
-        'You are an agent with access to the local filesystem. Find, list, and sort files as requested.',
-    prompts: [
-      const SubPromptStep(
-        text:
-            'list files except .hex with sizes in c:\\projects\ls\mobile_ai_agents sort by size desc show the first 5',
-      ),
-    ],
-    localServers: [filesystemServer],
-  );
-
-  // 5. Initialize the execution engine
+  // ── 5. Register agent from manifest (engine handles the rest) ──
   final engine = McpAgentEngine();
-  engine.setAgents([agent]);
+  engine.registerAgentFromManifest(
+    manifest,
+    llmConfig: llmConfig,
+    serverOverrides: serverOverrides,
+  );
 
+  // ── 6. Execute ─────────────────────────────────────────────────
   try {
-    print('Starting Filesystem Agent execution using stream events...');
+    print('\nStarting agent "${manifest.name}" using skill.md workflow...\n');
 
     final subscription = engine.agentEvents.listen((event) {
       if (event is AgentLogEvent) {
         print('[LOG] ${event.message}');
       } else if (event is AgentToolResultEvent) {
-        print(
-          '[TOOL RESULT] ${event.toolName} returned ${event.result.length} characters.',
-        );
+        final preview = event.result.length > 300
+            ? '${event.result.substring(0, 300)}...'
+            : event.result;
+        print('[TOOL RESULT] ${event.toolName}: $preview');
       } else if (event is AgentAssistantResultEvent) {
-        print('[ASSISTANT RESPONSE] ${event.response}');
+        print('[ASSISTANT] ${event.response}');
       } else if (event is AgentFinalResultEvent) {
         print('\n=== FINAL RESULT ===');
         print(event.response);
@@ -132,10 +141,7 @@ Future<void> main() async {
       }
     });
 
-    // Run agent
-    final stream = engine.runAsync(agent.key);
-
-    // Wait for the agent to finish
+    final stream = engine.runAsync(manifest.name);
     await stream.firstWhere(
       (event) => event is AgentFinalResultEvent || event is AgentErrorEvent,
     );

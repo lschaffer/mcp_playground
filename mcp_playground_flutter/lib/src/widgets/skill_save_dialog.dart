@@ -345,16 +345,7 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
       final result = importer.importFromZip(zipBytes);
       final manifest = result.manifest;
 
-      final skillImporter = SkillImporter();
-      final allToolNames = {
-        for (final t in widget.controller.localTools) t.name,
-        for (final t in widget.controller.externalTools) t.name,
-      };
-      final setup = skillImporter.toSetup(
-        manifest,
-        availableToolNames: allToolNames,
-      );
-      skillImporter.getUnresolvableTools(manifest, allToolNames);
+      final setup = _manifestToSetup(manifest);
 
       if (!mounted) return;
 
@@ -372,6 +363,23 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
         });
       }
     }
+  }
+
+  /// Converts a [SkillManifest] to [SavedPlaygroundSetup] using the shared
+  /// [SkillImporter.toSetup] helper. For direct agent execution (skipping
+  /// config storage), use [McpAgentEngine.registerAgentFromManifest] instead.
+  SavedPlaygroundSetup _manifestToSetup(SkillManifest manifest) {
+    final skillImporter = SkillImporter();
+    final allToolNames = {
+      for (final t in widget.controller.localTools) t.name,
+      for (final t in widget.controller.externalTools) t.name,
+    };
+    final setup = skillImporter.toSetup(
+      manifest,
+      availableToolNames: allToolNames,
+    );
+    skillImporter.getUnresolvableTools(manifest, allToolNames);
+    return setup;
   }
 
   Future<void> _importFromFile() async {
@@ -399,16 +407,9 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
         manifest = zipResult.manifest;
       }
 
-      final skillImporter = SkillImporter();
-      final allToolNames = {
-        for (final t in widget.controller.localTools) t.name,
-        for (final t in widget.controller.externalTools) t.name,
-      };
-      final setup = skillImporter.toSetup(
-        manifest,
-        availableToolNames: allToolNames,
-      );
-      skillImporter.getUnresolvableTools(manifest, allToolNames);
+      // Convert manifest to setup using shared helper.
+      // For direct execution use McpAgentEngine.registerAgentFromManifest.
+      final setup = _manifestToSetup(manifest);
 
       if (!mounted) return;
       await widget.controller.saveSetup(setup);

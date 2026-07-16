@@ -129,7 +129,7 @@ class SkillExporter {
     sb.writeln('---');
     sb.writeln('name: ${_yamlString(manifest.name)}');
     sb.writeln('description: ${_yamlString(manifest.description)}');
-    sb.writeln('compatibility: mcp_playground');
+    sb.writeln('compatibility: "Universal"');
 
     // Metadata block
     sb.writeln('metadata:');
