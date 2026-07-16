@@ -1,3 +1,9 @@
+## 0.2.1
+
+- Added `McpAgentEngine.registerAgentFromManifest()` — builds and registers an `Agent` directly from a parsed `SkillManifest`, handling tool-declaration → `McpServerConfig` mapping and prompt-step conversion. Accepts optional `dartTools`, `workingDir`, and `serverOverrides`.
+- Updated `SkillExporter.toSkillMd()` compatibility tag from `mcp_playground` to `"Universal"` to match agentskills.io TealKit standard.
+- Added `dartTools` parameter to `registerAgentFromManifest()` for Dart-native local tool injection (weather, charts, SSH).
+
 ## 0.2.0
 
 - **BREAKING**: SKILL.md export/import format changed to agentskills.io TealKit-compatible standard (`compatibility:`, `metadata:`, `workflow:`, `agents:`). Legacy custom format (`system_prompt:`, `prompts:`, `tools:`) is deprecated.

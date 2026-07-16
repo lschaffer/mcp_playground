@@ -837,6 +837,69 @@ class _McpPlaygroundState extends State<McpPlayground> {
     );
     debugPrint('[LoadSkill] tools: ${result.enabledToolNames.length}');
 
+    // If the skill declares a custom LLM, check if it matches the current playground LLM
+    // or if it's not configured/available (missing API key/model file).
+    if (_useCustomLlm && result.customLlmConfig != null) {
+      final custom = result.customLlmConfig!;
+      final defaults = _controller.llmConfig;
+
+      final isMatching = custom.provider == defaults.provider &&
+          custom.model == defaults.model;
+
+      bool isAvailable = true;
+      if (custom.provider == LlmProvider.embedded) {
+        if (custom.model.isEmpty || !File(custom.model).existsSync()) {
+          isAvailable = false;
+        }
+      } else {
+        // For cloud/API providers, if it matches defaults, we copy the API key/baseUrl
+        // if it's missing in the custom config.
+        LlmConfig verifiedCustom = custom;
+        if (custom.provider == defaults.provider) {
+          verifiedCustom = custom.copyWith(
+            apiKey: custom.apiKey.isEmpty ? defaults.apiKey : custom.apiKey,
+            baseUrl: custom.baseUrl.isEmpty ? defaults.baseUrl : custom.baseUrl,
+          );
+        }
+        isAvailable = verifiedCustom.isConfigured && isMatching;
+      }
+
+      if (!isAvailable) {
+        final l10n = _l10n;
+        final msg = l10n
+            .get('skillLlmNotConfigured')
+            .replaceAll('{provider}', custom.provider.displayName)
+            .replaceAll('{model}', custom.model);
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(l10n.get('llmWarning')),
+                content: Text(msg),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text(l10n.get('close')),
+                  ),
+                ],
+              ),
+            );
+          }
+        });
+
+        setState(() {
+          _useCustomLlm = false;
+          _applyLlmDefaults();
+        });
+
+        debugPrint(
+          '[LoadSkill] Custom LLM (${custom.provider.displayName} / ${custom.model}) not available or matches default – falling back to default.',
+        );
+      }
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

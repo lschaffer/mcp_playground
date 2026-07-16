@@ -1,3 +1,10 @@
+## 0.2.1
+
+- **Skill LLM fallback**: When importing a skill whose `llm_settings` provider/model is not configured (missing API key), the playground now shows an orange snackbar and falls back to the default LLM instead of looping on "Please configure LLM settings".
+- **Import deduplication**: `SkillLoadDialog` now uses a shared `_manifestToSetup()` helper for both `_loadSkill()` and `_importFromFile()`, with a doc reference to `McpAgentEngine.registerAgentFromManifest()` for direct execution.
+- Added `skillLlmNotConfigured` localization string (English + German).
+- Updated `mcp_playground_dart` dependency to `^0.2.1`.
+
 ## 0.2.0
 
 - **Breaking**: Replaced JSON export/import with agentskills.io-compatible SKILL.md ZIP skill system. Old `SavedPlaygroundSetup` JSON format is fully removed.

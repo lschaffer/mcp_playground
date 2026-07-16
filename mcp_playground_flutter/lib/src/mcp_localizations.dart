@@ -11,6 +11,9 @@ class McpPlaygroundLocalizations {
       'playgroundSettings': 'Playground Settings',
       'agentPlayground': 'AI Agent Playground',
       'pleaseConfigureLlm': 'Please configure the LLM settings first.',
+      'skillLlmNotConfigured':
+          'The LLM configured in this skill ({provider} / {model}) is not available. Using the default LLM instead.',
+      'llmWarning': 'LLM Warning',
       'systemPrompt': 'System Prompt',
       'systemPromptPlaceholder': 'System prompt...',
       'generatePromptTooltip': 'Generate system prompt using AI',
@@ -93,6 +96,9 @@ class McpPlaygroundLocalizations {
       'agentPlayground': 'KI-Agenten-Spielplatz',
       'pleaseConfigureLlm':
           'Bitte konfigurieren Sie zuerst die LLM-Einstellungen.',
+      'skillLlmNotConfigured':
+          'Das in diesem Skill konfigurierte LLM ({provider} / {model}) ist nicht verfügbar. Stattdessen wird das Standard-LLM verwendet.',
+      'llmWarning': 'LLM-Warnung',
       'systemPrompt': 'System-Prompt',
       'systemPromptPlaceholder': 'System-Prompt...',
       'generatePromptTooltip': 'System-Prompt mit KI generieren',
