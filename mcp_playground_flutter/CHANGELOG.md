@@ -1,3 +1,11 @@
+## 0.2.2
+
+- **Skill tool resolution**: When importing a skill, tools that already exist in the playground (local tools or MCP server capabilities) are now automatically detected and enabled. Case-insensitive matching and server-label capability mapping correctly resolve tools like `"filesystem"` to installed MCP servers.
+- **Two-tier tool status dialog**: After import, a dialog shows which tools were auto-enabled (green checkmark) and which are still missing (orange warning). Missing tools message says "select/enable" instead of "install/register".
+- **Dart-side warnings**: `McpAgentEngine.registerAgentFromManifest()` now emits `AgentLogEvent` warnings for unresolvable capability tools.
+- Added localized strings: `ok`, `skillToolStatusTitle`, `skillToolsAutoEnabled`, `skillToolsMissing` (English + German).
+- Updated `mcp_playground_dart` dependency to `^0.2.2`.
+
 ## 0.2.1
 
 - **Skill LLM fallback**: When importing a skill whose `llm_settings` provider/model is not configured (missing API key), the playground now shows an orange snackbar and falls back to the default LLM instead of looping on "Please configure LLM settings".

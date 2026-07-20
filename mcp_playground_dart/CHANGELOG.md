@@ -1,3 +1,9 @@
+## 0.2.2
+
+- Added `SkillImporter.collectNeededTools()` — collects all tool names referenced by a skill manifest (declared tools + per-step enabledToolNames).
+- Added `SkillImporter.buildUnresolvableToolsWarning()` — builds a human-readable warning listing missing tools with capability/install/registry details.
+- `McpAgentEngine.registerAgentFromManifest()` now tracks resolved capability tools and emits an `AgentLogEvent` warning when unresolvable tools are detected.
+
 ## 0.2.1
 
 - Added `McpAgentEngine.registerAgentFromManifest()` — builds and registers an `Agent` directly from a parsed `SkillManifest`, handling tool-declaration → `McpServerConfig` mapping and prompt-step conversion. Accepts optional `dartTools`, `workingDir`, and `serverOverrides`.

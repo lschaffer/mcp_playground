@@ -184,6 +184,24 @@ class SkillImporter {
     );
   }
 
+  /// Collects all tool names referenced by a [SkillManifest] — both
+  /// from declared tools and per-step [enabledToolNames].
+  Set<String> collectNeededTools(SkillManifest manifest) {
+    final needed = <String>{};
+    for (final tool in manifest.tools) {
+      needed.add(tool.name);
+    }
+    for (final step in manifest.promptSteps) {
+      if (step.enabledToolNames != null) {
+        needed.addAll(step.enabledToolNames!);
+      }
+    }
+    return needed;
+  }
+
+  /// Returns tool names declared in the manifest that are not available
+  /// in [availableToolNames]. When [availableToolNames] is empty, all tools
+  /// are treated as available (no filtering).
   List<String> getUnresolvableTools(
     SkillManifest manifest,
     Set<String> availableToolNames,
@@ -201,6 +219,52 @@ class SkillImporter {
       }
     }
     return missing.toList();
+  }
+
+  /// Builds a human-readable warning message listing tools that are required
+  /// by the skill manifest but not registered/available.
+  ///
+  /// Returns `null` when all tools are resolvable.
+  String? buildUnresolvableToolsWarning(
+    SkillManifest manifest,
+    Set<String> availableToolNames,
+  ) {
+    final missing = getUnresolvableTools(manifest, availableToolNames);
+    if (missing.isEmpty) return null;
+
+    final toolDetails = <String>[];
+    for (final name in missing) {
+      final decl = manifest.tools.where((t) => t.name == name).firstOrNull;
+      if (decl != null) {
+        final info = StringBuffer(name);
+        if (decl.capability != null && decl.capability != name) {
+          info.write(' (capability: ${decl.capability})');
+        }
+        if (decl.installCmd != null) {
+          info.write(' — install: ${decl.installCmd}');
+        }
+        if (decl.registryUrl != null) {
+          info.write(' — registry: ${decl.registryUrl}');
+        }
+        toolDetails.add(info.toString());
+      } else {
+        toolDetails.add(name);
+      }
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'This skill requires the following tool(s) that are not '
+      'currently registered/installed:',
+    );
+    for (final detail in toolDetails) {
+      buffer.writeln('  • $detail');
+    }
+    buffer.write(
+      'Please install/register the missing tool(s) before '
+      'executing prompts that depend on them.',
+    );
+    return buffer.toString();
   }
 
   // ── Sub-parsers ─────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import 'package:mcp_playground_dart/mcp_playground_dart.dart';
 import '../../playground_controller.dart';
 import '../skills/skill_zip_exporter.dart';
 import '../skills/skill_zip_importer.dart';
+import '../mcp_localizations.dart';
 
 /// Dialog for saving the current playground state as a skill ZIP.
 ///
@@ -345,15 +346,30 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
       final result = importer.importFromZip(zipBytes);
       final manifest = result.manifest;
 
-      final setup = _manifestToSetup(manifest);
+      final (:setup, :autoEnabled, :autoEnableNames, :trulyMissing) =
+          _manifestToSetup(manifest);
 
       if (!mounted) return;
+
+      // Auto-enable tools that exist in the playground (by actual tool names)
+      if (autoEnableNames.isNotEmpty) {
+        widget.controller.toggleToolsEnabled(autoEnableNames, true);
+      }
 
       // Save to controller's saved setups
       await widget.controller.saveSetup(setup);
 
       if (!mounted) return;
 
+      // Show tool status dialog if any tools were auto-enabled or are missing
+      if ((autoEnabled.isNotEmpty || trulyMissing.isNotEmpty) && mounted) {
+        await _showToolStatusDialog(
+          autoEnabled: autoEnabled,
+          trulyMissing: trulyMissing,
+        );
+      }
+
+      if (!mounted) return;
       Navigator.of(context).pop(setup);
     } catch (e) {
       if (mounted) {
@@ -368,18 +384,114 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
   /// Converts a [SkillManifest] to [SavedPlaygroundSetup] using the shared
   /// [SkillImporter.toSetup] helper. For direct agent execution (skipping
   /// config storage), use [McpAgentEngine.registerAgentFromManifest] instead.
-  SavedPlaygroundSetup _manifestToSetup(SkillManifest manifest) {
+  ///
+  /// Returns the setup, a list of capability/tool names that were found and
+  /// auto-enabled, and a list of names that are truly missing.
+  ///
+  /// Matching is case-insensitive. Skill capabilities (e.g. "filesystem") are
+  /// also matched against MCP server labels; when a server matches, all tools
+  /// from that server are enabled.
+  ({
+    SavedPlaygroundSetup setup,
+    List<String> autoEnabled,
+    List<String> autoEnableNames,
+    List<String> trulyMissing,
+  })
+  _manifestToSetup(SkillManifest manifest) {
     final skillImporter = SkillImporter();
-    final allToolNames = {
-      for (final t in widget.controller.localTools) t.name,
-      for (final t in widget.controller.externalTools) t.name,
+
+    // ── Build case-insensitive lookup maps ────────────────────
+
+    // Individual tool names → actual case-sensitive name
+    final toolNamesLower = <String, String>{};
+    for (final t in widget.controller.localTools) {
+      toolNamesLower[t.name.toLowerCase()] = t.name;
+    }
+    for (final t in widget.controller.externalTools) {
+      toolNamesLower[t.name.toLowerCase()] = t.name;
+    }
+    // MCP server labels → list of actual tool names from that server
+    // Note: do not gate on isConnected — servers with cached tools still
+    // provide useful capabilities even when temporarily disconnected.
+    final serverCapabilityMap = <String, List<String>>{};
+    for (final client in widget.controller.mcpClients) {
+      final tools = client.availableTools.map((t) => t.name).toList();
+      if (tools.isEmpty) continue;
+      final labels = <String>{
+        client.name.toLowerCase(),
+        client.label.toLowerCase(),
+      };
+      for (final label in labels) {
+        serverCapabilityMap[label] = tools;
+      }
+    }
+
+    final neededTools = skillImporter.collectNeededTools(manifest);
+
+    final autoEnabled = <String>[]; // Display names for dialog
+    final autoEnableNames = <String>[]; // Actual tool names to enable
+    final trulyMissing = <String>[];
+
+    for (final name in neededTools) {
+      final nameLower = name.toLowerCase();
+
+      // 1. Check individual tool names (case-insensitive)
+      if (toolNamesLower.containsKey(nameLower)) {
+        final actualName = toolNamesLower[nameLower]!;
+        autoEnabled.add(actualName);
+        autoEnableNames.add(actualName);
+        continue;
+      }
+
+      // 2. Check server labels as capability matches (case-insensitive)
+      if (serverCapabilityMap.containsKey(nameLower)) {
+        final serverTools = serverCapabilityMap[nameLower]!;
+        autoEnabled.add(name); // Show the capability name as-is
+        autoEnableNames.addAll(serverTools);
+        continue;
+      }
+
+      trulyMissing.add(name);
+    }
+
+    // ── Build available set for toSetup (case-insensitive union) ──
+    // Include capability names themselves so toSetup matches manifest-declared
+    // tools; then override enabledToolNames with actual MCP tool names below.
+    final allAvailableForSetup = <String>{
+      ...toolNamesLower.values,
+      for (final list in serverCapabilityMap.values) ...list,
+      ...neededTools, // allow manifest tool names to pass toSetup filter
     };
-    final setup = skillImporter.toSetup(
+
+    final rawSetup = skillImporter.toSetup(
       manifest,
-      availableToolNames: allToolNames,
+      availableToolNames: allAvailableForSetup,
     );
-    skillImporter.getUnresolvableTools(manifest, allToolNames);
-    return setup;
+
+    // Rebuild setup with actual tool names — toSetup uses exact name matching
+    // which won't expand capability names (e.g. "filesystem") into the real
+    // MCP tool names (e.g. "list_directory", "read_file").
+    final setup = SavedPlaygroundSetup(
+      id: rawSetup.id,
+      name: rawSetup.name,
+      description: rawSetup.description,
+      createdAt: rawSetup.createdAt,
+      systemPrompt: rawSetup.systemPrompt,
+      initialPrompt: rawSetup.initialPrompt,
+      enabledToolNames: autoEnableNames,
+      chatMode: rawSetup.chatMode,
+      stopAfterToolCall: rawSetup.stopAfterToolCall,
+      useCustomLlm: rawSetup.useCustomLlm,
+      customLlmConfig: rawSetup.customLlmConfig,
+      mcpInitParams: rawSetup.mcpInitParams,
+    );
+
+    return (
+      setup: setup,
+      autoEnabled: autoEnabled,
+      autoEnableNames: autoEnableNames,
+      trulyMissing: trulyMissing,
+    );
   }
 
   Future<void> _importFromFile() async {
@@ -409,12 +521,28 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
 
       // Convert manifest to setup using shared helper.
       // For direct execution use McpAgentEngine.registerAgentFromManifest.
-      final setup = _manifestToSetup(manifest);
+      final (:setup, :autoEnabled, :autoEnableNames, :trulyMissing) =
+          _manifestToSetup(manifest);
 
       if (!mounted) return;
+
+      // Auto-enable tools that exist in the playground (by actual tool names)
+      if (autoEnableNames.isNotEmpty) {
+        widget.controller.toggleToolsEnabled(autoEnableNames, true);
+      }
+
       await widget.controller.saveSetup(setup);
       if (!mounted) return;
 
+      // Show tool status dialog if any tools were auto-enabled or are missing
+      if ((autoEnabled.isNotEmpty || trulyMissing.isNotEmpty) && mounted) {
+        await _showToolStatusDialog(
+          autoEnabled: autoEnabled,
+          trulyMissing: trulyMissing,
+        );
+      }
+
+      if (!mounted) return;
       Navigator.of(context).pop(setup);
     } catch (e) {
       if (mounted) {
@@ -426,6 +554,85 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
         );
       }
     }
+  }
+
+  /// Shows a dialog summarizing tool resolution for a loaded/imported skill.
+  ///
+  /// [autoEnabled] lists tools that were found and enabled automatically.
+  /// [trulyMissing] lists tools that are not registered/installed.
+  Future<void> _showToolStatusDialog({
+    required List<String> autoEnabled,
+    required List<String> trulyMissing,
+  }) async {
+    // Use the localization from the nearest McpPlayground context
+    final l10n = McpPlaygroundLocalizations.of(context);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                trulyMissing.isNotEmpty
+                    ? Icons.warning_amber_rounded
+                    : Icons.check_circle_outline,
+                color: trulyMissing.isNotEmpty ? Colors.orange : Colors.green,
+              ),
+              const SizedBox(width: 8),
+              Text(l10n.get('skillToolStatusTitle')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (autoEnabled.isNotEmpty) ...[
+                Icon(Icons.check_circle, size: 16, color: Colors.green),
+                const SizedBox(height: 4),
+                Text(
+                  l10n
+                      .get('skillToolsAutoEnabled')
+                      .replaceAll('{tools}', autoEnabled.join(', ')),
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+              if (autoEnabled.isNotEmpty && trulyMissing.isNotEmpty)
+                const SizedBox(height: 16),
+              if (trulyMissing.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: Colors.orange,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        l10n
+                            .get('skillToolsMissing')
+                            .replaceAll('{tools}', trulyMissing.join(', ')),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(l10n.get('ok')),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override

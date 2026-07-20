@@ -7,6 +7,7 @@ class McpPlaygroundLocalizations {
 
   static const _localizedValues = {
     'en': {
+      'ok': 'OK',
       'playground': 'Playground',
       'playgroundSettings': 'Playground Settings',
       'agentPlayground': 'AI Agent Playground',
@@ -89,8 +90,14 @@ class McpPlaygroundLocalizations {
       'selectDownloadedModelHint':
           'Select a downloaded model above to activate it.',
       'downloadModelHint': 'Download a model to use on-device inference.',
+      'skillToolStatusTitle': 'Skill Tools',
+      'skillToolsAutoEnabled':
+          'The skill has the following tool(s) and they will be enabled: {tools}',
+      'skillToolsMissing':
+          'The skill needs the following tool(s). Please register/install them: {tools}',
     },
     'de': {
+      'ok': 'OK',
       'playground': 'Spielplatz',
       'playgroundSettings': 'Spielplatz-Einstellungen',
       'agentPlayground': 'KI-Agenten-Spielplatz',
@@ -175,6 +182,11 @@ class McpPlaygroundLocalizations {
           'Wählen Sie ein heruntergeladenes Modell aus, um es zu aktivieren.',
       'downloadModelHint':
           'Laden Sie ein Modell herunter, um die lokale Inferenz zu nutzen.',
+      'skillToolStatusTitle': 'Skill-Werkzeuge',
+      'skillToolsAutoEnabled':
+          'Der Skill besitzt die folgenden Werkzeuge, sie werden aktiviert: {tools}',
+      'skillToolsMissing':
+          'Der Skill benötigt die folgenden Werkzeuge. Bitte installieren/registrieren Sie diese: {tools}',
     },
   };
 

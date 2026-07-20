@@ -10,6 +10,7 @@ import '../mcp/mcp_client.dart';
 import '../mcp/mcp_client_def.dart';
 import '../mcp/local_mcp_client_stub.dart'
     if (dart.library.io) '../mcp/local_mcp_client.dart';
+import '../skills/skill_importer.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // Agent Status
@@ -236,6 +237,7 @@ class McpAgentEngine {
   }) {
     final localServers = <McpServerConfig>[];
     final remoteServers = <McpServerConfig>[];
+    final resolvedTools = <String>{};
 
     for (final tool in manifest.tools) {
       // Skip if an explicit override exists for this tool name
@@ -246,6 +248,7 @@ class McpAgentEngine {
         } else {
           remoteServers.add(override);
         }
+        resolvedTools.add(tool.name);
         continue;
       }
 
@@ -264,6 +267,7 @@ class McpAgentEngine {
               enabled: true,
             ),
           );
+          resolvedTools.add(tool.name);
         case 'external':
           remoteServers.add(
             McpServerConfig(
@@ -273,11 +277,41 @@ class McpAgentEngine {
               enabled: true,
             ),
           );
+          resolvedTools.add(tool.name);
         case 'capability':
+          // Check if provided via dartTools
+          final dartToolNames = dartTools.map((t) => t.name).toSet();
+          if (dartToolNames.contains(tool.name)) {
+            resolvedTools.add(tool.name);
+          }
           // Capability-tier tools are expected to be provided by the host
-          // via `dartTools` or `serverOverrides`. Skip here.
+          // via `dartTools` or `serverOverrides`. Unresolved ones are
+          // logged as a warning below.
           break;
       }
+    }
+
+    // Collect and warn about unresolvable capability tools
+    final unresolvedCapabilities = <String>[];
+    for (final tool in manifest.tools) {
+      if (!resolvedTools.contains(tool.name)) {
+        unresolvedCapabilities.add(tool.name);
+      }
+    }
+
+    // Also check prompt steps for tools not in resolvedTools or dartTools
+    final allAvailable = {
+      ...resolvedTools,
+      ...dartTools.map((t) => t.name),
+      if (serverOverrides != null) ...serverOverrides.keys,
+    };
+    final importer = SkillImporter();
+    final warning = importer.buildUnresolvableToolsWarning(
+      manifest,
+      allAvailable,
+    );
+    if (warning != null) {
+      _eventController.add(AgentLogEvent('WARNING: $warning'));
     }
 
     final agent = Agent(
