@@ -47,6 +47,27 @@ class SkillImporter {
       return _parseTealKitFormat(parsed, bodyMarkdown);
     }
 
+    final tools = _parseToolDeclarations(parsed['tools']);
+    final metadata = parsed['metadata'];
+    if (metadata is Map) {
+      final hermes = metadata['hermes'];
+      if (hermes is Map) {
+        final toolsets = hermes['requires_toolsets'];
+        if (toolsets is List) {
+          for (final t in toolsets) {
+            final toolsetName = t.toString().trim();
+            if (toolsetName.isNotEmpty && !tools.any((x) => x.name == toolsetName)) {
+              tools.add(SkillToolDeclaration(
+                name: toolsetName,
+                tier: 'capability',
+                capability: toolsetName,
+              ));
+            }
+          }
+        }
+      }
+    }
+
     return SkillManifest(
       name: parsed['name'] as String? ?? 'unnamed-skill',
       description: parsed['description'] as String? ?? '',
@@ -54,7 +75,7 @@ class SkillImporter {
       author: parsed['author'] as String?,
       systemPrompt: parsed['system_prompt'] as String? ?? '',
       promptSteps: _parsePromptSteps(parsed['prompts']),
-      tools: _parseToolDeclarations(parsed['tools']),
+      tools: tools,
       mcpPlaygroundMeta: _parseMcpPlaygroundMeta(parsed['mcp_playground']),
       isMultiTurn:
           (parsed['prompts'] as List?)?.length != null &&

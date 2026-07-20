@@ -95,6 +95,8 @@ class McpPlaygroundLocalizations {
           'The skill has the following tool(s) and they will be enabled: {tools}',
       'skillToolsMissing':
           'The skill needs the following tool(s). Please register/install them: {tools}',
+      'skillToolsSimilarTo': 'similar to {name}',
+      'skillToolsOrSimilar': 'or similar terminal/ssh tool',
     },
     'de': {
       'ok': 'OK',
@@ -187,6 +189,8 @@ class McpPlaygroundLocalizations {
           'Der Skill besitzt die folgenden Werkzeuge, sie werden aktiviert: {tools}',
       'skillToolsMissing':
           'Der Skill benötigt die folgenden Werkzeuge. Bitte installieren/registrieren Sie diese: {tools}',
+      'skillToolsSimilarTo': 'ähnlich wie {name}',
+      'skillToolsOrSimilar': 'oder ein ähnliches Terminal-/SSH-Werkzeug',
     },
   };
 

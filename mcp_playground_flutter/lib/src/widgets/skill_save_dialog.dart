@@ -428,6 +428,26 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
 
     final neededTools = skillImporter.collectNeededTools(manifest);
 
+    final l10n = McpPlaygroundLocalizations.of(context);
+    final synonyms = {
+      'terminal': [
+        'ssh_execute_command',
+        'ssh_run_command',
+        'execute_command',
+        'run_command',
+        'bash',
+        'ssh',
+        'cmd',
+      ],
+      'filesystem': [
+        'list_directory',
+        'read_file',
+        'write_file',
+        'create_directory',
+        'filesystem',
+      ]
+    };
+
     final autoEnabled = <String>[]; // Display names for dialog
     final autoEnableNames = <String>[]; // Actual tool names to enable
     final trulyMissing = <String>[];
@@ -451,7 +471,33 @@ class _SkillLoadDialogState extends State<SkillLoadDialog> {
         continue;
       }
 
-      trulyMissing.add(name);
+      // 3. Check for similar/synonym tools
+      bool foundSynonym = false;
+      if (synonyms.containsKey(nameLower)) {
+        for (final syn in synonyms[nameLower]!) {
+          final synLower = syn.toLowerCase();
+          if (toolNamesLower.containsKey(synLower)) {
+            final actualName = toolNamesLower[synLower]!;
+            final similarText = l10n
+                .get('skillToolsSimilarTo')
+                .replaceAll('{name}', name);
+            autoEnabled.add('$actualName ($similarText)');
+            autoEnableNames.add(actualName);
+            foundSynonym = true;
+            break;
+          }
+        }
+      }
+
+      if (foundSynonym) continue;
+
+      // 4. Truly missing
+      if (nameLower == 'terminal') {
+        final orSimilarText = l10n.get('skillToolsOrSimilar');
+        trulyMissing.add('$name $orSimilarText');
+      } else {
+        trulyMissing.add(name);
+      }
     }
 
     // ── Build available set for toSetup (case-insensitive union) ──
